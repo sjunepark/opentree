@@ -64,7 +64,7 @@ It enforces “clean working tree per iteration” and expects each successful i
 
 ## Preserved Snapshot Files
 
-These are the verbatim copies preserved under `migration/legacy/code/`:
+These are the verbatim copies preserved under `legacy/code/`:
 
 - [`cmd/ralph/main.go`](cmd/ralph/main.go)
 - [`internal/app/app.go`](internal/app/app.go)
@@ -87,4 +87,4 @@ These are the verbatim copies preserved under `migration/legacy/code/`:
   - per-iteration log structure,
   - hard invariants like “no progress without commit” (if the new commit policy chooses this).
 - The new runner’s **executor interface** can reuse the concept of “provider kind → argv template”, but should
-  enforce stronger isolation boundaries (workspace confinement, timeouts, output limits) per `migration/VISION.md`.
+  enforce stronger isolation boundaries (workspace confinement, timeouts, output limits) per `VISION.md`.

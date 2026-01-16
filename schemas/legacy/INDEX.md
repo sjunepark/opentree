@@ -12,4 +12,4 @@ Schemas copied from the pre-pivot repo. These are **legacy** but useful as refer
   - Source: `schemas/board.schema.json` (also duplicated historically under `docs/blueprint/schemas/`).
   - Purpose (legacy): schema for a Kanban “board” model used by the prior Ralph/PRD runner.
   - Relevance to new repo: not directly reusable, but the schema style and validation expectations map to the
-    new **task tree schema** requirement in `migration/VISION.md`.
+    new **task tree schema** requirement in `VISION.md`.

@@ -1,10 +1,10 @@
 # Human Questions / Open Decisions
 
 This is the running list of product/architecture questions that should be answered by a human (or explicitly
-decided in `migration/GOAL.md`) during the reboot.
+decided in `GOAL.md`) during the reboot.
 
 If a question has been decided, remove it from this file and ensure the decision is captured in
-`migration/VISION.md` and/or `migration/GOAL.md`.
+`VISION.md` and/or `GOAL.md`.
 
 ## Product / Workflow
 

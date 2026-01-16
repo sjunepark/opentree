@@ -1,6 +1,6 @@
 # GOAL: Deterministic Goal-Driven Agent Loop Runner (MVP)
 
-This document turns `migration/VISION.md` into an execution-ready goal spec for the new repository.
+This document turns `VISION.md` into an execution-ready goal spec for the repository.
 
 ## Desired Outcome
 
@@ -50,7 +50,7 @@ UI is explicitly secondary (nice-to-have later; not part of the MVP).
 - Remote-first CI-as-runner.
 - GitHub integrations (auto-push, PR creation) as a default behavior.
 
-## Constraints / Invariants (from `migration/VISION.md`)
+## Constraints / Invariants (from `VISION.md`)
 
 - **Deterministic runner, flexible agent**: creativity is allowed only within runner rules.
 - **Strict schemas and machine-validated state**: tree is the source of truth.
@@ -80,5 +80,5 @@ These must be decided early because they shape the architecture:
 
 ## Related References
 
-- `migration/VISION.md` — canonical vision and principles.
-- `migration/docs/loom/lessons.md` — patterns from Loom worth borrowing (state machines, hooks, guard entrypoints, tool boundaries).
+- `VISION.md` — canonical vision and principles.
+- `docs/loom/lessons.md` — patterns from Loom worth borrowing (state machines, hooks, guard entrypoints, tool boundaries).
