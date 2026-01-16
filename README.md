@@ -7,8 +7,6 @@ Start here:
 - `VISION.md` — principles
 - `ARCHITECTURE.md` — canonical technical reference
 - `DECISIONS.md` — decision log (dated rationale)
-- `.runner/GOAL.md` — project goal/spec
-- `.runner/HUMAN_QUESTIONS.md` — open questions
 
 Reference material:
 
@@ -16,7 +14,7 @@ Reference material:
 
 Run context:
 
-- `.runner/` — per-project “memory + spec” artifacts the runner surfaces into each loop.
+- `.runner/` — per-project “memory + spec” artifacts in the **target project repo root**.
 
 Guards:
 
@@ -24,17 +22,23 @@ Guards:
 
 ## Quickstart (MVP)
 
-From the repo root:
+Install (from this repo):
 
 ```bash
-cargo run -p runner -- init
-cargo run -p runner -- validate
-cargo run -p runner -- select
+cargo install --path runner
+```
+
+From a target project repo root:
+
+```bash
+runner init
+runner validate
+runner select
 ```
 
 Notes:
 
-- `runner init --force` overwrites `.runner/tree.json` and rewrites the schema file.
+- `runner init --force` overwrites `.runner/tree.json`, empties `.runner/*.md` placeholders, and rewrites the schema file.
 - `runner select` prints the selected leaf node id to stdout.
 
 ## File Contracts

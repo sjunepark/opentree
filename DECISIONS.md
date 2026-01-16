@@ -5,19 +5,7 @@ This file is a dated decision log (what we decided and why).
 - Principles: `VISION.md`
 - Canonical technical reference: `ARCHITECTURE.md`
 
-## Decision template
-
-Copy/paste and fill:
-
-```md
-## YYYY-MM-DD — <title>
-
-- Status: <proposed|accepted|revised|reversed>
-- Decision: <what we decided>
-- Rationale: <why>
-- Consequences: <what this affects>
-- References: <links to ARCHITECTURE.md sections, issues, PRs>
-```
+When adding a decision, record a dated section with status, decision, rationale, consequences, and references.
 
 ---
 
@@ -130,7 +118,7 @@ Invariants:
 - Decision: these are intentionally left open for follow-up.
 - Rationale: MVP needs a working loop, but some defaults and enforcement details can be deferred.
 - Consequences: capture resolutions here as new dated decisions once settled.
-- References: `.runner/HUMAN_QUESTIONS.md`, `ARCHITECTURE.md`
+- References: `.runner/HUMAN_QUESTIONS.md` (target project), `ARCHITECTURE.md`
 
 Open questions (as of 2026-01-16):
 

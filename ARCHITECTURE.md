@@ -6,6 +6,9 @@ This document is the canonical technical reference for the **deterministic local
 - Decision log (dated rationale): `DECISIONS.md`
 - Project-level goal/spec provided to each iteration: `.runner/GOAL.md`
 
+Note on paths: in this document, `.runner/...` and `schemas/...` refer to paths in the **target project
+repo root**. `runner init` creates the `.runner/` directory and placeholder files in the target project.
+
 ## 1) Goals & Non-Negotiable Invariants
 
 The runner exists to make progress **deterministically** while agents remain flexible.
@@ -62,11 +65,11 @@ Agent responsibilities:
 
 ### 3.2 Memory / spec (provided to each iteration; not source of truth)
 
-- `.runner/GOAL.md`
-- `.runner/HUMAN_QUESTIONS.md`
-- `.runner/ASSUMPTIONS.md`
-- `.runner/FEEDBACK_LOG.md`
-- `.runner/IMPROVEMENTS.md`
+- `.runner/GOAL.md` (placeholder; author content per iteration)
+- `.runner/HUMAN_QUESTIONS.md` (placeholder; author content per iteration)
+- `.runner/ASSUMPTIONS.md` (placeholder; author content per iteration)
+- `.runner/FEEDBACK_LOG.md` (placeholder; author content per iteration)
+- `.runner/IMPROVEMENTS.md` (placeholder; author content per iteration)
 
 ### 3.3 Iteration logs (local-only; gitignored)
 

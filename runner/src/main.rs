@@ -16,68 +16,8 @@ use std::fs;
 use std::path::Path;
 use tree::{Node, default_tree};
 
-const V1_SCHEMA: &str = r##"{
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://runner.local/schemas/task_tree/v1.schema.json",
-  "title": "Task Tree v1",
-  "$ref": "#/$defs/node",
-  "$defs": {
-    "node": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "id",
-        "order",
-        "title",
-        "goal",
-        "acceptance",
-        "passes",
-        "attempts",
-        "max_attempts",
-        "children"
-      ],
-      "properties": {
-        "id": {
-          "type": "string",
-          "minLength": 1
-        },
-        "order": {
-          "type": "integer"
-        },
-        "title": {
-          "type": "string"
-        },
-        "goal": {
-          "type": "string"
-        },
-        "acceptance": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
-        "passes": {
-          "type": "boolean"
-        },
-        "attempts": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "max_attempts": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "children": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/node"
-          }
-        }
-      }
-    }
-  }
-}
-"##;
+const V1_SCHEMA: &str = include_str!("../../schemas/task_tree/v1.schema.json");
+const EMPTY_DOC: &str = "";
 
 #[derive(Parser)]
 #[command(
@@ -127,6 +67,13 @@ fn cmd_init(force: bool) -> Result<()> {
     fs::create_dir_all(".runner").context("create .runner directory")?;
     fs::create_dir_all("schemas/task_tree").context("create schema directory")?;
 
+    write_if_missing_or_force(Path::new(".runner/ASSUMPTIONS.md"), EMPTY_DOC, force)?;
+    write_if_missing_or_force(Path::new(".runner/FEEDBACK_LOG.md"), EMPTY_DOC, force)?;
+    write_if_missing_or_force(Path::new(".runner/GLOSSARY.md"), EMPTY_DOC, force)?;
+    write_if_missing_or_force(Path::new(".runner/GOAL.md"), EMPTY_DOC, force)?;
+    write_if_missing_or_force(Path::new(".runner/HUMAN_QUESTIONS.md"), EMPTY_DOC, force)?;
+    write_if_missing_or_force(Path::new(".runner/IMPROVEMENTS.md"), EMPTY_DOC, force)?;
+
     if force || !schema_path.exists() {
         fs::write(schema_path, V1_SCHEMA).context("write v1 schema")?;
     }
@@ -164,6 +111,14 @@ fn write_json<T: Serialize>(path: &Path, value: &T) -> Result<()> {
     let mut payload = serde_json::to_string_pretty(value).context("serialize json")?;
     payload.push('\n');
     fs::write(path, payload).with_context(|| format!("write {}", path.display()))?;
+    Ok(())
+}
+
+fn write_if_missing_or_force(path: &Path, contents: &str, force: bool) -> Result<()> {
+    if !force && path.exists() {
+        return Ok(());
+    }
+    fs::write(path, contents).with_context(|| format!("write {}", path.display()))?;
     Ok(())
 }
 
