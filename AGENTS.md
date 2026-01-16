@@ -1,5 +1,9 @@
 # AGENTS.md
 
+## Session Continuity
+
+- **Always read `WIP.md` at session start** and keep it current. It reflects ongoing work so agents without prior context can resume immediately.
+
 ## Commands
 
 - Use `just` for common workflows (`just --list` to see all); prefer `just ci` before committing.
