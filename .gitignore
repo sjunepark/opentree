@@ -2,3 +2,6 @@
 .rumdl_cache/
 
 bin/
+target/
+
+.plan

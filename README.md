@@ -21,3 +21,23 @@ Run context:
 Guards:
 
 - `just ci` (currently runs Markdown checks via `rumdl`).
+
+## Quickstart (MVP)
+
+From the repo root:
+
+```bash
+cargo run -p runner -- init
+cargo run -p runner -- validate
+cargo run -p runner -- select
+```
+
+Notes:
+
+- `runner init --force` overwrites `.runner/tree.json` and rewrites the schema file.
+- `runner select` prints the selected leaf node id to stdout.
+
+## File Contracts
+
+- `.runner/tree.json` — canonical task tree (v1) written in stable order.
+- `schemas/task_tree/v1.schema.json` — JSON Schema for v1 task trees.
