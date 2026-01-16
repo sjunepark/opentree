@@ -1,3 +1,9 @@
+//! Goal-driven agent loop runner.
+//!
+//! Manages a task tree (`.runner/tree.json`) that tracks hierarchical goals.
+//! The runner selects the leftmost open leaf for execution, enabling
+//! deterministic, resumable agent loops.
+
 mod tree;
 
 use anyhow::{Context, Result, bail};
@@ -86,11 +92,15 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Create `.runner/tree.json` and schema files if missing.
     Init {
+        /// Overwrite existing files.
         #[arg(short, long)]
         force: bool,
     },
+    /// Check tree against schema and invariants (unique ids, sorted children, etc.).
     Validate,
+    /// Print the id of the leftmost open leaf (first incomplete task).
     Select,
 }
 
@@ -149,6 +159,7 @@ fn cmd_select() -> Result<()> {
     Ok(())
 }
 
+/// Serialize `value` to pretty-printed JSON with trailing newline.
 fn write_json<T: Serialize>(path: &Path, value: &T) -> Result<()> {
     let mut payload = serde_json::to_string_pretty(value).context("serialize json")?;
     payload.push('\n');
@@ -156,6 +167,9 @@ fn write_json<T: Serialize>(path: &Path, value: &T) -> Result<()> {
     Ok(())
 }
 
+/// Parse and validate tree: schema conformance + semantic invariants.
+///
+/// Returns the parsed `Node` on success, or an error describing violations.
 fn validate_tree(tree_raw: &str, schema_raw: &str) -> Result<Node> {
     let tree_json: Value = serde_json::from_str(tree_raw).context("parse tree json")?;
     let schema_json: Value = serde_json::from_str(schema_raw).context("parse schema json")?;
@@ -168,6 +182,7 @@ fn validate_tree(tree_raw: &str, schema_raw: &str) -> Result<Node> {
     Ok(tree)
 }
 
+/// Validate JSON instance against a JSON Schema (Draft 2020-12).
 fn validate_schema(instance: &Value, schema: &Value) -> Result<()> {
     let compiled = jsonschema::options()
         .with_draft(Draft::Draft202012)
@@ -183,6 +198,11 @@ fn validate_schema(instance: &Value, schema: &Value) -> Result<()> {
     Ok(())
 }
 
+/// Check semantic invariants not expressible in JSON Schema:
+/// - No duplicate ids
+/// - `max_attempts > 0`
+/// - `attempts <= max_attempts`
+/// - Children sorted by `(order, id)`
 fn validate_invariants(root: &Node) -> Vec<String> {
     let mut errors = Vec::new();
     let mut seen = HashSet::new();
@@ -216,6 +236,7 @@ fn validate_node(node: &Node, seen: &mut HashSet<String>, errors: &mut Vec<Strin
     }
 }
 
+/// True if children are sorted by `(order, id)` ascending.
 fn children_sorted(children: &[Node]) -> bool {
     children.windows(2).all(|pair| {
         let left = &pair[0];
@@ -224,6 +245,9 @@ fn children_sorted(children: &[Node]) -> bool {
     })
 }
 
+/// Find the first leaf with `passes=false` via depth-first traversal.
+///
+/// Returns `None` if all leaves pass (tree is complete).
 fn leftmost_open_leaf<'a>(node: &'a Node) -> Option<&'a Node> {
     if node.children.is_empty() {
         return if node.passes { None } else { Some(node) };
