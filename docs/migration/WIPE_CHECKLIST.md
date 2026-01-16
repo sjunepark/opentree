@@ -62,6 +62,6 @@ git commit -m "chore(reboot): wipe repo (keep .git/ only)"
 
 ## After the Wipe
 
-- [ ] Decide the new implementation language/runtime (see `HUMAN_QUESTIONS.md`).
-- [ ] Create the initial strict task-tree schema and runner skeleton per `GOAL.md`.
+- [ ] Decide the new implementation language/runtime (see `.runner/HUMAN_QUESTIONS.md`).
+- [ ] Create the initial strict task-tree schema and runner skeleton per `.runner/GOAL.md`.
 - [ ] Add a deterministic guard entrypoint (recommended: `just ci`).

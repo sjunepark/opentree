@@ -58,9 +58,14 @@ system self-correcting.
 
 ## Canonical Artifacts
 
+### Run context directory (per project)
+
+This repo keeps per-project run artifacts in `.runner/`. These are the files that should be provided to each
+agent iteration (alongside the codebase), and are intentionally **not** kept at the repo root.
+
 ### `GOAL.md` (human-facing, thorough)
 
-`GOAL.md` is the thorough documentation of the top-level goal/spec (the “what”, not the “how”).
+`.runner/GOAL.md` is the thorough documentation of the top-level goal/spec (the “what”, not the “how”).
 
 It should include:
 
@@ -71,7 +76,7 @@ It should include:
 
 ### Tree file (machine-facing, strict)
 
-The tree is the canonical state the runner uses to plan and execute work. It references `GOAL.md`
+The tree is the canonical state the runner uses to plan and execute work. It references `.runner/GOAL.md`
 and contains ordered nodes representing the plan.
 
 Other Markdown files exist for memory/logging, but are not the source of truth.
@@ -156,10 +161,10 @@ The system must accumulate learning without bloating the tree schema.
 
 These are Markdown (human-facing, flexible), and can be updated freely:
 
-- `FEEDBACK_LOG.md` — mistakes, failure modes, what to do differently next iteration.
-- `HUMAN_QUESTIONS.md` — missing product intent, unclear constraints, etc. (not syntax-level issues).
-- `ASSUMPTIONS.md` — assumptions made to keep execution moving.
-- `IMPROVEMENTS.md` — tools/prompts/approach that would have helped (e.g., Playwright, Chrome DevTools, PDF readers,
+- `.runner/FEEDBACK_LOG.md` — mistakes, failure modes, what to do differently next iteration.
+- `.runner/HUMAN_QUESTIONS.md` — missing product intent, unclear constraints, etc. (not syntax-level issues).
+- `.runner/ASSUMPTIONS.md` — assumptions made to keep execution moving.
+- `.runner/IMPROVEMENTS.md` — tools/prompts/approach that would have helped (e.g., Playwright, Chrome DevTools, PDF readers,
   MCPs, domain knowledge packs).
 
 The runner should ensure these are discoverable and consistently written/updated.
@@ -174,7 +179,7 @@ The system should make it easy for the agent to use the tools required to valida
 - Optional tool installation during execution (when needed).
 - Optional integrations (Playwright, browser automation, devtools, doc readers, MCP servers).
 
-Large architectural choices (frameworks/libraries) should be decided upfront in `GOAL.md`.
+Large architectural choices (frameworks/libraries) should be decided upfront in `.runner/GOAL.md`.
 Smaller implementation-level decisions can be made by the agent during execution.
 
 ---

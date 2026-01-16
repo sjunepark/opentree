@@ -5,7 +5,8 @@ it explains how preserved artifacts might translate into the new “goal-driven 
 
 ## New Repo “Intentional” Top-Level (suggested)
 
-- `GOAL.md` — product/spec anchor.
+- `VISION.md` — repo-level vision and invariants.
+- `.runner/` — per-project run state (goal + memory docs + tree).
 - `schemas/` — strict, versioned task-tree schemas (new; see `VISION.md`).
 - `runner/` (or `cmd/` + `internal/`) — deterministic selection + orchestration + executor integration (new).
 - `prompts/` — DECOMPOSE/EXECUTE prompt templates (new; seed from `prompts/legacy/`).

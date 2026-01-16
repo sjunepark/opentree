@@ -5,8 +5,8 @@ Deterministic local runner for looping **fresh agent sessions** over a strict, g
 Start here:
 
 - `VISION.md`
-- `GOAL.md`
-- `HUMAN_QUESTIONS.md`
+- `.runner/GOAL.md`
+- `.runner/HUMAN_QUESTIONS.md`
 
 Reference material:
 
@@ -14,6 +14,10 @@ Reference material:
 - `docs/legacy/` — legacy docs snapshot (verbatim reference).
 - `prompts/legacy/`, `schemas/legacy/`, `templates/legacy/` — legacy snapshots (verbatim reference).
 - `legacy/` — legacy Go implementation + root file snapshot (reference only).
+
+Run context:
+
+- `.runner/` — per-project “memory + spec” artifacts the runner surfaces into each loop.
 
 Guards:
 

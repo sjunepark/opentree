@@ -4,7 +4,8 @@ This folder preserves the original “migration pack” that seeded this reposit
 
 The repository has since been **unpacked**:
 
-- Canonical vision/spec docs now live at the repo root (`VISION.md`, `GOAL.md`, etc).
+- `VISION.md` remains at the repo root (repo-level vision).
+- Per-project run docs (goal + memory) now live under `.runner/` (e.g., `.runner/GOAL.md`).
 - Legacy reference material has been moved under `docs/legacy/`, `prompts/legacy/`, `schemas/legacy/`,
   `templates/legacy/`, and `legacy/`.
 
@@ -17,17 +18,18 @@ task tree, and automatic validation gates).
 ## Read Order (Fresh Agent Session)
 
 1. `VISION.md` — principles and end-state.
-2. `GOAL.md` — execution-ready goal spec + MVP success criteria.
+2. `.runner/GOAL.md` — execution-ready goal spec + MVP success criteria.
 3. `docs/loom/lessons.md` — patterns to borrow (state machines, hooks, tool boundaries, guard entrypoint).
-4. `HUMAN_QUESTIONS.md` — open decisions that shape architecture.
-5. `ASSUMPTIONS.md` — assumptions made to keep execution moving.
-6. `FEEDBACK_LOG.md` — mistakes, failure modes, and prevention.
-7. `IMPROVEMENTS.md` — tool/prompt/system improvements to consider.
-8. `GLOSSARY.md` — stable shared terminology.
+4. `.runner/HUMAN_QUESTIONS.md` — open decisions that shape architecture.
+5. `.runner/ASSUMPTIONS.md` — assumptions made to keep execution moving.
+6. `.runner/FEEDBACK_LOG.md` — mistakes, failure modes, and prevention.
+7. `.runner/IMPROVEMENTS.md` — tool/prompt/system improvements to consider.
+8. `.runner/GLOSSARY.md` — stable shared terminology.
 
 ## Layout (Current)
 
-- Repo root — seed docs (`VISION.md`, `GOAL.md`, and memory docs).
+- Repo root — `VISION.md` (repo-level vision).
+- `.runner/` — per-project run docs (`GOAL.md` and memory docs).
 - `docs/loom/` — Loom study notes.
 - `docs/migration/` — this archived migration pack (how the reboot was bootstrapped).
 - `docs/legacy/` — legacy docs snapshot (verbatim reference).

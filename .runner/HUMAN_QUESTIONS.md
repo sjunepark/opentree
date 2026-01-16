@@ -4,7 +4,7 @@ This is the running list of product/architecture questions that should be answer
 decided in `GOAL.md`) during the reboot.
 
 If a question has been decided, remove it from this file and ensure the decision is captured in
-`VISION.md` and/or `GOAL.md`.
+`../VISION.md` and/or `GOAL.md`.
 
 ## Product / Workflow
 
