@@ -1,0 +1,66 @@
+{
+  "project": "REPLACE_ME",
+  "branchName": "ralph/feature-name",
+  "description": "REPLACE_ME",
+  "platformConstraints": {
+    "supportedOS": [
+      "linux",
+      "macos",
+      "windows"
+    ],
+    "ciOS": [
+      "linux"
+    ],
+    "runtimeDependencies": [],
+    "nonSupportedOSBehavior": "N/A",
+    "ciMismatchStrategy": "N/A"
+  },
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Document repo architecture",
+      "description": "As an agent, I want a tracked, repo-specific architecture doc so that I can make correct changes with minimal context.",
+      "acceptanceCriteria": [
+        "Update `.ralph/architecture.md` to describe system overview, key components, and critical flows",
+        "List invariants/constraints that must not break",
+        "Remove all `RALPH_TODO` placeholders from `.ralph/architecture.md`",
+        "Keep `.ralph/architecture.md` ≤ 250 lines"
+      ],
+      "manualSmokeTestChecklist": null,
+      "priority": 1,
+      "passes": false,
+      "completion": {
+        "summary": "",
+        "retro": {
+          "difficulties": "",
+          "prdWeaknesses": "",
+          "ralphImprovements": ""
+        },
+        "scopeAppropriate": null,
+        "autoCompactOccurred": null
+      }
+    },
+    {
+      "id": "US-002",
+      "title": "Configure Ralph quality gates",
+      "description": "As a developer, I want automated quality gates so that Ralph can verify changes before marking work complete.",
+      "acceptanceCriteria": [
+        "Update `.ralph/gates.sh` so it runs the correct checks for this repository",
+        "Running `./.ralph/gates.sh` exits with code 0 on a clean repo"
+      ],
+      "manualSmokeTestChecklist": null,
+      "priority": 2,
+      "passes": false,
+      "completion": {
+        "summary": "",
+        "retro": {
+          "difficulties": "",
+          "prdWeaknesses": "",
+          "ralphImprovements": ""
+        },
+        "scopeAppropriate": null,
+        "autoCompactOccurred": null
+      }
+    }
+  ]
+}
