@@ -1,16 +1,16 @@
 # Architecture: Deterministic Goal-Driven Agent Loop Runner (MVP)
 
-This document describes the intended architecture for the **deterministic local runner** described in
-`VISION.md`.
+This document is the canonical technical reference for the **deterministic local runner**.
 
-- Decision history / raw notes: `BRAINSTORM.md` (2026-01-16)
+- Vision principles: `VISION.md`
+- Decision log (dated rationale): `DECISIONS.md`
 - Project-level goal/spec provided to each iteration: `.runner/GOAL.md`
 
 ## 1) Goals & Non-Negotiable Invariants
 
 The runner exists to make progress **deterministically** while agents remain flexible.
 
-Non-negotiables (source: `VISION.md` + decisions captured in `BRAINSTORM.md`):
+Non-negotiables (source: `VISION.md` + decisions captured in `DECISIONS.md`):
 
 - **Determinism over convenience**
   - Given the same repo state and inputs, the runner makes the same choices.
@@ -129,25 +129,25 @@ If a node has `passes=true` in the previous committed tree, then in the next tre
 Each `step` is one deterministic iteration:
 
 1. Ensure repo safety:
-  - refuse `main`/`master`
-  - ensure clean working tree (including untracked)
+   - refuse `main`/`master`
+   - ensure clean working tree (including untracked)
 2. Load + validate `.runner/tree.json` against schema + invariants.
 3. Deterministically select next open leaf.
 4. Build a stable prompt pack.
 5. Invoke the executor (fresh agent session) with a 30-minute wall clock budget shared with guards.
 6. Re-load + validate `.runner/tree.json` (including passed-node immutability).
 7. Classify the iteration:
-  - **EXECUTE** if any non-`.runner/` file changed
-  - **DECOMPOSE** if only `.runner/` files changed
+   - **EXECUTE** if any non-`.runner/` file changed
+   - **DECOMPOSE** if only `.runner/` files changed
 8. If EXECUTE: run `just ci` and capture stdout/stderr + timing.
 9. Apply deterministic state updates:
-  - `passes=true` only on green guards (runner-owned)
-  - increment attempts on failure (runner-owned)
-  - derive internal node passes
+   - `passes=true` only on green guards (runner-owned)
+   - increment attempts on failure (runner-owned)
+   - derive internal node passes
 10. Persist:
-  - write tree atomically (canonical form)
-  - write iteration logs
-  - commit the iteration
+    - write tree atomically (canonical form)
+    - write iteration logs
+    - commit the iteration
 11. Stop when `root.passes == true` (no open leaves remain).
 
 ### 5.1 Deterministic recovery: invalid tree
@@ -227,7 +227,7 @@ Prompt pack (stable order, minimal but sufficient):
 
 ## 9) Git Policy (MVP)
 
-Locked MVP policy (per `BRAINSTORM.md`):
+Locked MVP policy (per `DECISIONS.md`):
 
 - Refuse to run on `main`/`master`.
 - Require clean working tree at iteration start (`git status --porcelain` empty, including untracked).

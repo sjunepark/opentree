@@ -4,9 +4,11 @@ Deterministic local runner for looping **fresh agent sessions** over a strict, g
 
 Start here:
 
-- `VISION.md`
-- `.runner/GOAL.md`
-- `.runner/HUMAN_QUESTIONS.md`
+- `VISION.md` — principles
+- `ARCHITECTURE.md` — canonical technical reference
+- `DECISIONS.md` — decision log (dated rationale)
+- `.runner/GOAL.md` — project goal/spec
+- `.runner/HUMAN_QUESTIONS.md` — open questions
 
 Reference material:
 
