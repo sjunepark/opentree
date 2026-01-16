@@ -13,9 +13,6 @@ Start here:
 Reference material:
 
 - `docs/loom/` — Loom lessons (state machines, hooks, guard entrypoints, tool boundaries).
-- `docs/legacy/` — legacy docs snapshot (verbatim reference).
-- `prompts/legacy/`, `schemas/legacy/`, `templates/legacy/` — legacy snapshots (verbatim reference).
-- `legacy/` — legacy Go implementation + root file snapshot (reference only).
 
 Run context:
 
