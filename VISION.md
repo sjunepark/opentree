@@ -1,8 +1,6 @@
 # Vision: Goal-Driven Agent Looping System
 
-This repository is pivoting from a “PRD/story runner” into a **general-purpose system for looping agents**.
-
-The end state is a **deterministic local runner** that repeatedly spawns **fresh, isolated agent sessions** to:
+The end goal is a **deterministic local runner** that repeatedly spawns **fresh, isolated agent sessions** to:
 
 1. Take a **Goal**.
 2. Build and refine a **sequential task tree** (no parallel workflows).
