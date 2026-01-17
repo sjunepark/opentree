@@ -11,6 +11,7 @@ Start here:
 Reference material:
 
 - `docs/loom/` — Loom lessons (state machines, hooks, guard entrypoints, tool boundaries).
+- `docs/project/cli.md` — CLI command behavior and exit codes.
 
 Run context:
 
@@ -39,6 +40,8 @@ From a target project repo root:
 
 ```bash
 runner start
+runner validate
+runner select
 runner step
 ```
 

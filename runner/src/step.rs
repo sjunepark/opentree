@@ -7,7 +7,8 @@ use std::time::{Duration, Instant};
 use anyhow::{Context, Result, anyhow};
 
 use crate::core::immutability::check_passed_node_immutability;
-use crate::core::selector::leftmost_open_leaf;
+use crate::core::path::node_path;
+use crate::core::selector::{is_stuck, leftmost_open_leaf};
 use crate::core::state_update::apply_state_updates;
 use crate::core::status_validator::validate_status_invariants;
 use crate::core::types::{AgentOutput, AgentStatus, GuardOutcome};
@@ -55,6 +56,27 @@ pub struct StepOutcome {
     pub guard: GuardOutcome,
 }
 
+/// Error when a stuck leaf is selected (hard-stop).
+#[derive(Debug, Clone)]
+pub struct StuckLeafError {
+    pub id: String,
+    pub path: String,
+    pub attempts: u32,
+    pub max_attempts: u32,
+}
+
+impl std::fmt::Display for StuckLeafError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "stuck leaf selected (hard-stop): id={} path={} attempts={}/{}",
+            self.id, self.path, self.attempts, self.max_attempts
+        )
+    }
+}
+
+impl std::error::Error for StuckLeafError {}
+
 /// Execute one deterministic iteration of the agent loop.
 ///
 /// Selects the leftmost open leaf, writes context, executes the agent,
@@ -94,17 +116,17 @@ pub fn run_step<E: Executor, G: GuardRunner>(
     tracing::Span::current().record("iter", iter);
     tracing::Span::current().record("node_id", &selected_id);
 
-    let selected_path = find_node_path(&prev_tree, &selected_id)
+    let selected_path = node_path(&prev_tree, &selected_id)
         .ok_or_else(|| anyhow!("selected node path not found"))?;
 
-    if !selected.passes && selected.attempts == selected.max_attempts {
-        return Err(anyhow!(
-            "stuck leaf selected (hard-stop): id={} path={} attempts={}/{}",
-            selected.id,
-            selected_path,
-            selected.attempts,
-            selected.max_attempts
-        ));
+    if is_stuck(selected) {
+        return Err(StuckLeafError {
+            id: selected.id.clone(),
+            path: selected_path.clone(),
+            attempts: selected.attempts,
+            max_attempts: selected.max_attempts,
+        }
+        .into());
     }
 
     let goal_body = render_goal(selected);
@@ -455,28 +477,6 @@ fn failure_from_run_state(
         .join(prev_iter.to_string())
         .join("guard.log");
     fs::read_to_string(guard_log).ok()
-}
-
-fn find_node_path(root: &Node, target_id: &str) -> Option<String> {
-    let mut path = Vec::new();
-    if find_node_path_inner(root, target_id, &mut path) {
-        return Some(path.join("/"));
-    }
-    None
-}
-
-fn find_node_path_inner(node: &Node, target_id: &str, path: &mut Vec<String>) -> bool {
-    path.push(node.id.clone());
-    if node.id == target_id {
-        return true;
-    }
-    for child in &node.children {
-        if find_node_path_inner(child, target_id, path) {
-            return true;
-        }
-    }
-    path.pop();
-    false
 }
 
 fn summarize_tree(root: &Node, max_nodes: usize) -> String {

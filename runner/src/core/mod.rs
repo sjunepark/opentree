@@ -5,6 +5,7 @@
 
 pub mod immutability;
 pub mod invariants;
+pub mod path;
 pub mod selector;
 pub mod state_update;
 pub mod status_validator;

@@ -10,10 +10,11 @@
 - Clarified attempt semantics: runner-internal failures do not increment `attempts` (only successful agent outputs do).
 - Decided stuck-node policy: hard-stop (documented in `DECISIONS.md` + `ARCHITECTURE.md`).
 - Enforced stuck-node hard-stop in `runner step` (exits non-zero when `attempts == max_attempts`).
+- Completed `.plan/6` (MVP commands: `runner validate` + `runner select`, shared helpers, docs).
 
 ## Next
 
-- Execute `.plan/6` (MVP commands: `runner validate` + `runner select`).
+- Decide next milestone and create the next `.plan/` workstream.
 
 ## Notes
 

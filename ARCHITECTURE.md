@@ -4,6 +4,7 @@ This document is the canonical technical reference for the **deterministic local
 
 - Vision principles: `VISION.md`
 - Decision log (dated rationale): `DECISIONS.md`
+- CLI behavior reference: `docs/project/cli.md`
 - Project-level goal/spec provided to each iteration: `.runner/GOAL.md` (YAML frontmatter includes `id`, set by `runner start`)
 
 Note on paths: in this document, `.runner/...` and `schemas/...` refer to paths in the **target project
