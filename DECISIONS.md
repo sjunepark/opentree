@@ -75,7 +75,7 @@ Invariants:
 - Status: accepted
 - Decision:
   - workspace isolation is in-place (no worktrees/temp dirs for code).
-  - refuse to run on `main` / `master`.
+  - refuse to run `runner step` on `main` / `master` (but allow `runner start` to branch off immediately).
   - default branch naming is `runner/<run-id>`.
   - require a clean working tree (including untracked) at iteration start.
   - commit every iteration (including failures) with deterministic Conventional Commit messages.
@@ -116,7 +116,7 @@ Invariants:
 
 - Status: accepted
 - Decision:
-  - Increment `attempts` only when an iteration is classified as EXECUTE and guards fail.
+  - Increment `attempts` on `done` + guards fail, or on `retry` (guards skipped).
   - Attempt exhaustion saturates at `max_attempts` (no hard error in MVP).
   - Runner overwrites runner-owned fields (`passes`, `attempts`) deterministically from the previous
     tree before applying updates (agent edits are ignored).
