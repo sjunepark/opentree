@@ -97,8 +97,8 @@ Invariants:
 ## 2026-01-16 — Per-iteration timeout
 
 - Status: accepted
-- Decision: 30-minute wall-clock timeout per iteration covering agent + guards; stop the whole run on
-  timeout.
+- Decision: default 30-minute wall-clock timeout per iteration covering agent + guards (configurable
+  via `.runner/state/config.toml`); stop the whole run on timeout.
 - Rationale: bounds runaway tool output and prevents non-terminating loops.
 - Consequences: executor and guard runner share a single deterministic budget.
 - References: `ARCHITECTURE.md`

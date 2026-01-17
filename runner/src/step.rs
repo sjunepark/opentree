@@ -2,7 +2,7 @@
 
 use std::fs;
 use std::path::Path;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, anyhow};
 
@@ -10,15 +10,13 @@ use crate::core::immutability::check_passed_node_immutability;
 use crate::core::selector::leftmost_open_leaf;
 use crate::core::state_update::apply_state_updates;
 use crate::core::status_validator::validate_status_invariants;
-use crate::core::types::{AgentStatus, GuardOutcome};
+use crate::core::types::{AgentOutput, AgentStatus, GuardOutcome};
+use crate::io::config::load_config_with_legacy_fallback;
 use crate::io::context::{ContextPayload, write_context};
 use crate::io::executor::{ExecRequest, Executor, execute_and_load};
 use crate::io::git::Git;
 use crate::io::goal::read_goal_id;
-use crate::io::guards::{
-    DEFAULT_GUARD_TIMEOUT, DEFAULT_OUTPUT_LIMIT_BYTES, GuardRequest, GuardRunner,
-    run_guards_if_needed,
-};
+use crate::io::guards::{GuardRequest, GuardRunner, run_guards_if_needed};
 use crate::io::iteration_log::{IterationMeta, IterationWriteRequest, write_iteration};
 use crate::io::prompt::{PromptBuilder, PromptInputs};
 use crate::io::run_state::{RunState, load_run_state, write_run_state};
@@ -74,6 +72,11 @@ pub fn run_step<E: Executor, G: GuardRunner>(
     let schema_path = state_dir.join("schema.json");
     let run_state_path = state_dir.join("run_state.json");
     let output_schema_path = state_dir.join("agent_output.schema.json");
+    let config_toml_path = state_dir.join("config.toml");
+    let legacy_config_json_path = state_dir.join("config.json");
+
+    let cfg = load_config_with_legacy_fallback(&config_toml_path, &legacy_config_json_path)?;
+    let deadline = start + Duration::from_secs(cfg.iteration_timeout_secs);
 
     let mut run_state = load_or_default_run_state(&run_state_path)?;
     let run_id = run_state
@@ -118,42 +121,95 @@ pub fn run_step<E: Executor, G: GuardRunner>(
     fs::create_dir_all(&iter_dir)
         .with_context(|| format!("create iteration dir {}", iter_dir.display()))?;
 
-    let exec_request = ExecRequest {
-        workdir: root.to_path_buf(),
-        prompt: prompt_pack.render(),
-        output_schema_path: output_schema_path.clone(),
-        output_path: iter_dir.join("output.json"),
-        executor_log_path: iter_dir.join("executor.log"),
-    };
-
-    let output = execute_and_load(executor, &exec_request)?;
-
-    let next_tree = load_tree(&schema_path, &tree_path)?;
-    validate_post_exec_tree(&prev_tree, &next_tree)?;
-    validate_status(&prev_tree, &next_tree, &selected_id, output.status)?;
-
     let guard_log_path = iter_dir.join("guard.log");
-    let guard_outcome = run_guards_if_needed(
-        output.status,
-        guard_runner,
-        &GuardRequest {
-            workdir: root.to_path_buf(),
-            log_path: guard_log_path.clone(),
-            timeout: DEFAULT_GUARD_TIMEOUT,
-            output_limit_bytes: DEFAULT_OUTPUT_LIMIT_BYTES,
-        },
-    )?;
+    // Attempt counters must only move forward once we actually attempt an agent execution.
+    let mut attempted_agent = false;
 
-    let mut updated_tree = next_tree.clone();
-    apply_state_updates(
-        &prev_tree,
-        &mut updated_tree,
-        &selected_id,
-        output.status,
-        guard_outcome,
-    )
-    .map_err(|err| anyhow!("state update failed: {err}"))?;
-    write_tree(&tree_path, &updated_tree)?;
+    let attempt = (|| -> Result<(AgentOutput, GuardOutcome, Node)> {
+        let exec_timeout = remaining_budget(deadline)?;
+        attempted_agent = true;
+
+        let exec_request = ExecRequest {
+            workdir: root.to_path_buf(),
+            prompt: prompt_pack.render(),
+            output_schema_path: output_schema_path.clone(),
+            output_path: iter_dir.join("output.json"),
+            executor_log_path: iter_dir.join("executor.log"),
+            timeout: exec_timeout,
+            output_limit_bytes: cfg.executor_output_limit_bytes,
+        };
+
+        let output = execute_and_load(executor, &exec_request)?;
+
+        let next_tree = load_tree(&schema_path, &tree_path)?;
+        validate_post_exec_tree(&prev_tree, &next_tree)?;
+        validate_status(&prev_tree, &next_tree, &selected_id, output.status)?;
+
+        let guard_timeout = if output.status == AgentStatus::Done {
+            remaining_budget(deadline)?
+        } else {
+            Duration::from_secs(0)
+        };
+        let guard_outcome = run_guards_if_needed(
+            output.status,
+            guard_runner,
+            &GuardRequest {
+                workdir: root.to_path_buf(),
+                log_path: guard_log_path.clone(),
+                timeout: guard_timeout,
+                output_limit_bytes: cfg.guard_output_limit_bytes,
+            },
+        )?;
+
+        let mut updated_tree = next_tree.clone();
+        apply_state_updates(
+            &prev_tree,
+            &mut updated_tree,
+            &selected_id,
+            output.status,
+            guard_outcome,
+        )
+        .map_err(|err| anyhow!("state update failed: {err}"))?;
+        write_tree(&tree_path, &updated_tree)?;
+
+        Ok((output, guard_outcome, updated_tree))
+    })();
+
+    let output: AgentOutput;
+    let guard_outcome: GuardOutcome;
+    let mut tree_after: Node;
+    let mut step_error: Option<anyhow::Error> = None;
+
+    match attempt {
+        Ok((out, guard, tree)) => {
+            output = out;
+            guard_outcome = guard;
+            tree_after = tree;
+        }
+        Err(err) => {
+            step_error = Some(err);
+
+            let err_msg = format!("runner error: {}", step_error.as_ref().unwrap());
+            if let Some(parent) = guard_log_path.parent() {
+                fs::create_dir_all(parent)
+                    .with_context(|| format!("create {}", parent.display()))?;
+            }
+            fs::write(&guard_log_path, format!("{err_msg}\n"))
+                .with_context(|| format!("write {}", guard_log_path.display()))?;
+
+            output = AgentOutput {
+                status: AgentStatus::Retry,
+                summary: err_msg,
+            };
+            guard_outcome = GuardOutcome::Fail;
+            tree_after = prev_tree.clone();
+            if attempted_agent {
+                increment_attempts(&mut tree_after, &selected_id);
+            }
+
+            write_tree(&tree_path, &tree_after)?;
+        }
+    }
 
     let guard_log = if guard_outcome == GuardOutcome::Pass || guard_outcome == GuardOutcome::Fail {
         fs::read_to_string(&guard_log_path).ok()
@@ -178,7 +234,7 @@ pub fn run_step<E: Executor, G: GuardRunner>(
         output: &output,
         guard_log: guard_log.as_deref(),
         tree_before: &prev_tree,
-        tree_after: &updated_tree,
+        tree_after: &tree_after,
     })?;
 
     run_state.run_id = Some(run_id.clone());
@@ -197,6 +253,10 @@ pub fn run_step<E: Executor, G: GuardRunner>(
         guard_outcome,
     )?;
 
+    if let Some(err) = step_error {
+        return Err(err);
+    }
+
     Ok(StepOutcome {
         run_id,
         iter,
@@ -211,6 +271,16 @@ fn load_or_default_run_state(path: &Path) -> Result<RunState> {
         return load_run_state(path);
     }
     Ok(RunState::default())
+}
+
+fn remaining_budget(deadline: Instant) -> Result<Duration> {
+    let remaining = deadline
+        .checked_duration_since(Instant::now())
+        .unwrap_or(Duration::from_secs(0));
+    if remaining.is_zero() {
+        return Err(anyhow!("iteration timed out"));
+    }
+    Ok(remaining)
 }
 
 fn enforce_git_policy_pre_step(root: &Path) -> Result<()> {
@@ -326,6 +396,27 @@ fn validate_status(prev: &Node, next: &Node, selected_id: &str, status: AgentSta
         return Ok(());
     }
     Err(anyhow!("status invariants failed: {}", errors.join("; ")))
+}
+
+fn increment_attempts(tree: &mut Node, selected_id: &str) {
+    let Some(node) = find_node_mut(tree, selected_id) else {
+        return;
+    };
+    if node.attempts < node.max_attempts {
+        node.attempts += 1;
+    }
+}
+
+fn find_node_mut<'a>(node: &'a mut Node, target_id: &str) -> Option<&'a mut Node> {
+    if node.id == target_id {
+        return Some(node);
+    }
+    for child in &mut node.children {
+        if let Some(found) = find_node_mut(child, target_id) {
+            return Some(found);
+        }
+    }
+    None
 }
 
 fn render_goal(node: &Node) -> String {

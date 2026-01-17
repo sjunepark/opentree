@@ -4,8 +4,10 @@ use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::time::Duration;
 
 use anyhow::{Context, Result, anyhow};
+use wait_timeout::ChildExt;
 
 use crate::core::types::AgentOutput;
 
@@ -22,6 +24,10 @@ pub struct ExecRequest {
     pub output_path: PathBuf,
     /// Path to write executor stdout/stderr log.
     pub executor_log_path: PathBuf,
+    /// Maximum time to wait for the executor to complete.
+    pub timeout: Duration,
+    /// Truncate executor output logs beyond this many bytes.
+    pub output_limit_bytes: usize,
 }
 
 /// Abstraction over agent execution backends.
@@ -64,14 +70,36 @@ impl Executor for CodexExecutor {
                 .context("write prompt to codex stdin")?;
         }
 
-        let output = child.wait_with_output().context("wait for codex exec")?;
-        write_executor_log(&request.executor_log_path, &output.stdout, &output.stderr)?;
+        let status = match child
+            .wait_timeout(request.timeout)
+            .context("wait for executor timeout")?
+        {
+            Some(status) => status,
+            None => {
+                child.kill().context("kill executor process")?;
+                child.wait().context("wait executor process")?;
+                write_executor_log(
+                    &request.executor_log_path,
+                    b"",
+                    b"executor timed out",
+                    request.output_limit_bytes,
+                )?;
+                return Err(anyhow!("codex exec timed out after {:?}", request.timeout));
+            }
+        };
 
-        if !output.status.success() {
-            return Err(anyhow!(
-                "codex exec failed with status {:?}",
-                output.status.code()
-            ));
+        let output = child
+            .wait_with_output()
+            .context("collect executor output")?;
+        write_executor_log(
+            &request.executor_log_path,
+            &output.stdout,
+            &output.stderr,
+            request.output_limit_bytes,
+        )?;
+
+        if !status.success() {
+            return Err(anyhow!("codex exec failed with status {:?}", status.code()));
         }
 
         Ok(())
@@ -100,7 +128,12 @@ fn read_agent_output(path: &Path) -> Result<AgentOutput> {
     Ok(output)
 }
 
-fn write_executor_log(path: &Path, stdout: &[u8], stderr: &[u8]) -> Result<()> {
+fn write_executor_log(
+    path: &Path,
+    stdout: &[u8],
+    stderr: &[u8],
+    output_limit: usize,
+) -> Result<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)
             .with_context(|| format!("create executor log dir {}", parent.display()))?;
@@ -110,6 +143,18 @@ fn write_executor_log(path: &Path, stdout: &[u8], stderr: &[u8]) -> Result<()> {
     buf.push_str(&String::from_utf8_lossy(stdout));
     buf.push_str("\n=== stderr ===\n");
     buf.push_str(&String::from_utf8_lossy(stderr));
+
+    if buf.len() > output_limit {
+        let truncated = format!(
+            "{}\n[truncated {} bytes]\n",
+            &buf[..output_limit],
+            buf.len() - output_limit
+        );
+        fs::write(path, truncated)
+            .with_context(|| format!("write executor log {}", path.display()))?;
+        return Ok(());
+    }
+
     fs::write(path, buf).with_context(|| format!("write executor log {}", path.display()))
 }
 
@@ -117,6 +162,7 @@ fn write_executor_log(path: &Path, stdout: &[u8], stderr: &[u8]) -> Result<()> {
 mod tests {
     use super::*;
     use crate::core::types::AgentStatus;
+    use std::time::Duration;
 
     struct FakeExecutor {
         output: Option<AgentOutput>,
@@ -145,6 +191,8 @@ mod tests {
             output_schema_path: temp.path().join("schema.json"),
             output_path: temp.path().join("output.json"),
             executor_log_path: temp.path().join("executor.log"),
+            timeout: Duration::from_secs(1),
+            output_limit_bytes: 1000,
         };
         let fake = FakeExecutor {
             output: Some(AgentOutput {
@@ -169,6 +217,8 @@ mod tests {
             output_schema_path: temp.path().join("schema.json"),
             output_path: temp.path().join("output.json"),
             executor_log_path: temp.path().join("executor.log"),
+            timeout: Duration::from_secs(1),
+            output_limit_bytes: 1000,
         };
         let fake = FakeExecutor { output: None };
 

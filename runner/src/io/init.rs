@@ -6,8 +6,9 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result, anyhow};
 use serde::Serialize;
 
+use super::config::{RunnerConfig, write_config};
 use super::run_state::{RunState, write_run_state};
-use crate::tree::default_tree;
+use crate::tree::default_tree_with_max_attempts;
 
 const TREE_SCHEMA: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -52,7 +53,7 @@ impl RunnerPaths {
             goal_path: runner_dir.join("GOAL.md"),
             tree_path: state_dir.join("tree.json"),
             schema_path: state_dir.join("schema.json"),
-            config_path: state_dir.join("config.json"),
+            config_path: state_dir.join("config.toml"),
             assumptions_path: state_dir.join("assumptions.md"),
             questions_path: state_dir.join("questions.md"),
             run_state_path: state_dir.join("run_state.json"),
@@ -68,17 +69,6 @@ impl RunnerPaths {
 pub struct InitOptions {
     /// If true, overwrite existing runner-owned files.
     pub force: bool,
-}
-
-#[derive(Debug, Serialize)]
-struct RunnerConfig {
-    max_attempts_default: u32,
-    guard: GuardConfig,
-}
-
-#[derive(Debug, Serialize)]
-struct GuardConfig {
-    command: Vec<String>,
 }
 
 /// Create `.runner/` scaffolding in `root`.
@@ -102,11 +92,13 @@ pub fn init_runner(root: &Path, options: &InitOptions) -> Result<RunnerPaths> {
     create_dir(&paths.context_dir)?;
     create_dir(&paths.iterations_dir)?;
 
+    let cfg = RunnerConfig::default();
+
     write_file(&paths.gitignore_path, RUNNER_GITIGNORE)?;
     write_file(&paths.goal_path, GOAL_PLACEHOLDER)?;
-    write_tree(&paths.tree_path)?;
+    write_tree(&paths.tree_path, cfg.max_attempts_default)?;
     write_file(&paths.schema_path, TREE_SCHEMA)?;
-    write_json(&paths.config_path, &default_config())?;
+    write_config(&paths.config_path, &cfg)?;
     write_run_state(&paths.run_state_path, &RunState::default())?;
     write_file(&paths.assumptions_path, ASSUMPTIONS_PLACEHOLDER)?;
     write_file(&paths.questions_path, QUESTIONS_PLACEHOLDER)?;
@@ -134,19 +126,10 @@ fn write_json<T: Serialize>(path: &Path, value: &T) -> Result<()> {
     write_file(path, &buf)
 }
 
-fn write_tree(path: &Path) -> Result<()> {
-    let mut tree = default_tree();
+fn write_tree(path: &Path, max_attempts_default: u32) -> Result<()> {
+    let mut tree = default_tree_with_max_attempts(max_attempts_default);
     tree.sort_children();
     write_json(path, &tree)
-}
-
-fn default_config() -> RunnerConfig {
-    RunnerConfig {
-        max_attempts_default: 3,
-        guard: GuardConfig {
-            command: vec!["just".to_string(), "ci".to_string()],
-        },
-    }
 }
 
 const GOAL_PLACEHOLDER: &str = "# Goal\n\nDescribe the overall project goal here.\n";
@@ -171,7 +154,7 @@ mod tests {
     /// Verifies init_runner creates the complete directory structure and files.
     ///
     /// Checks all expected directories (state, context, iterations) and files
-    /// (tree.json, schema.json, config.json, etc.) exist with correct content.
+    /// (tree.json, schema.json, config.toml, etc.) exist with correct content.
     #[test]
     fn init_creates_expected_layout() {
         let temp = tempfile::tempdir().expect("tempdir");
@@ -196,7 +179,8 @@ mod tests {
         assert!(paths.context_failure_path.is_file());
 
         let tree_contents = read_to_string(&paths.tree_path);
-        let mut expected_tree = default_tree();
+        let cfg = RunnerConfig::default();
+        let mut expected_tree = default_tree_with_max_attempts(cfg.max_attempts_default);
         expected_tree.sort_children();
         let mut expected_tree_json =
             serde_json::to_string_pretty(&expected_tree).expect("serialize tree");

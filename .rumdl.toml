@@ -8,3 +8,6 @@ disable = ["MD005", "MD013"]
 
 [MD007]
 indent = 2
+
+[MD032]
+allow-lazy-continuation = false

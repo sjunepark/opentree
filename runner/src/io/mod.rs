@@ -1,5 +1,6 @@
 //! I/O helpers for runner commands.
 
+pub mod config;
 pub mod context;
 pub mod executor;
 pub mod git;

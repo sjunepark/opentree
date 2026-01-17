@@ -42,6 +42,11 @@ impl Node {
 
 /// Returns a minimal root node for bootstrapping a new task tree.
 pub fn default_tree() -> Node {
+    default_tree_with_max_attempts(3)
+}
+
+/// Returns a minimal root node for bootstrapping a new task tree.
+pub fn default_tree_with_max_attempts(max_attempts: u32) -> Node {
     Node {
         id: "root".to_string(),
         order: 0,
@@ -50,7 +55,7 @@ pub fn default_tree() -> Node {
         acceptance: Vec::new(),
         passes: false,
         attempts: 0,
-        max_attempts: 3,
+        max_attempts,
         children: Vec::new(),
     }
 }

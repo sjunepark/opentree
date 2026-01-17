@@ -34,18 +34,33 @@ pub trait GuardRunner {
     fn run(&self, request: &GuardRequest) -> Result<GuardOutcome>;
 }
 
-/// Guard runner that executes `just ci`.
-pub struct JustGuardRunner;
+/// Guard runner that executes an arbitrary configured command.
+#[derive(Debug, Clone)]
+pub struct CommandGuardRunner {
+    command: Vec<String>,
+}
 
-impl GuardRunner for JustGuardRunner {
+impl CommandGuardRunner {
+    pub fn new(command: Vec<String>) -> Self {
+        Self { command }
+    }
+}
+
+impl GuardRunner for CommandGuardRunner {
     fn run(&self, request: &GuardRequest) -> Result<GuardOutcome> {
-        let mut child = Command::new("just")
-            .arg("ci")
+        let program = self
+            .command
+            .first()
+            .ok_or_else(|| anyhow::anyhow!("guard command is empty"))?;
+        let args = self.command.get(1..).unwrap_or(&[]);
+
+        let mut child = Command::new(program)
+            .args(args)
             .current_dir(&request.workdir)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
-            .context("spawn just ci")?;
+            .with_context(|| format!("spawn guard command: {}", self.command.join(" ")))?;
 
         let status = match child
             .wait_timeout(request.timeout)
@@ -78,6 +93,15 @@ impl GuardRunner for JustGuardRunner {
         } else {
             Ok(GuardOutcome::Fail)
         }
+    }
+}
+
+/// Guard runner that executes `just ci`.
+pub struct JustGuardRunner;
+
+impl GuardRunner for JustGuardRunner {
+    fn run(&self, request: &GuardRequest) -> Result<GuardOutcome> {
+        CommandGuardRunner::new(vec!["just".to_string(), "ci".to_string()]).run(request)
     }
 }
 
