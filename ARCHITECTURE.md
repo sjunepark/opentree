@@ -105,7 +105,7 @@ Append-only immutable log of all iterations:
 
 - `.runner/iterations/{run-id}/{iter-n}/output.json`: agent's status + summary.
 - `.runner/iterations/{run-id}/{iter-n}/guard.log`: full guard output (if guards ran).
-- `.runner/iterations/{run-id}/{iter-n}/failure.log`: failure output used for next iteration context (if last_guard == fail).
+- `.runner/iterations/{run-id}/{iter-n}/failure.log`: failure output used for next iteration context (guard failures or runner errors).
 - `.runner/iterations/{run-id}/{iter-n}/executor.log`: executor stdout/stderr (if executor ran).
 - `.runner/iterations/{run-id}/{iter-n}/meta.json`: timing, node id, mode, outcome.
 - `.runner/iterations/{run-id}/{iter-n}/tree.before.json`: tree snapshot before iteration.
