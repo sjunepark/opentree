@@ -59,6 +59,7 @@ pub struct StepOutcome {
 ///
 /// Selects the leftmost open leaf, writes context, executes the agent,
 /// validates output, runs guards if needed, and updates state.
+#[tracing::instrument(skip_all, fields(run_id, iter, node_id))]
 pub fn run_step<E: Executor, G: GuardRunner>(
     root: &Path,
     executor: &E,
@@ -91,6 +92,10 @@ pub fn run_step<E: Executor, G: GuardRunner>(
     let selected = leftmost_open_leaf(&prev_tree)
         .ok_or_else(|| anyhow!("no open leaf found (tree already complete)"))?;
     let selected_id = selected.id.clone();
+    tracing::Span::current().record("run_id", &run_id);
+    tracing::Span::current().record("iter", iter);
+    tracing::Span::current().record("node_id", &selected_id);
+
     let selected_path = find_node_path(&prev_tree, &selected_id)
         .ok_or_else(|| anyhow!("selected node path not found"))?;
 

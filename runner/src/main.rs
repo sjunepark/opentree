@@ -36,6 +36,7 @@ enum Command {
 }
 
 fn main() -> Result<()> {
+    runner::logging::init();
     let cli = Cli::parse();
     match cli.command {
         Command::Init { force } => {
