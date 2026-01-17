@@ -25,24 +25,7 @@ use crate::io::run_state::{RunState, load_run_state, write_run_state};
 use crate::io::tree_store::{load_tree, write_tree};
 use crate::tree::Node;
 
-// REVIEW: Is this the optimal way to define the schema? Inline multiline strings seem fragile
-const AGENT_OUTPUT_SCHEMA: &str = r#"{
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "AgentOutput",
-  "type": "object",
-  "additionalProperties": false,
-  "required": ["status", "summary"],
-  "properties": {
-    "status": {
-      "type": "string",
-      "enum": ["done", "retry", "decomposed"]
-    },
-    "summary": {
-      "type": "string"
-    }
-  }
-}
-"#;
+const AGENT_OUTPUT_SCHEMA: &str = include_str!("../schemas/agent_output.schema.json");
 
 /// Configuration for a single step iteration.
 #[derive(Debug, Clone)]
