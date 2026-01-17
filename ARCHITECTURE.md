@@ -179,7 +179,7 @@ If a node has `passes=true` in the previous committed tree, then in the next tre
 Each `step` is one deterministic iteration:
 
 1. Ensure repo safety:
-   - refuse `main`/`master`
+   - refuse `runner step` on `main`/`master` (use `runner start` to branch off immediately)
    - ensure clean working tree (including untracked)
 2. Load + validate `.runner/state/tree.json` against schema + invariants.
 3. Deterministically select next open leaf.
@@ -431,6 +431,9 @@ Determinism is enforced by design constraints plus implementation guardrails:
   - enforce the shared 30-minute iteration budget deterministically
 
 ## 8) Executor & Prompt Pack
+
+For detailed documentation on context preparation and prompt assembly, see
+[`docs/project/context-preparation.md`](docs/project/context-preparation.md).
 
 Executor requirements:
 
