@@ -203,7 +203,7 @@ fn children_sorted(children: &[Node]) -> bool {
 /// Find the first leaf with `passes=false` via depth-first traversal.
 ///
 /// Returns `None` if all leaves pass (tree is complete).
-fn leftmost_open_leaf<'a>(node: &'a Node) -> Option<&'a Node> {
+fn leftmost_open_leaf(node: &Node) -> Option<&Node> {
     if node.children.is_empty() {
         return if node.passes { None } else { Some(node) };
     }

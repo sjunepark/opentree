@@ -13,4 +13,4 @@
 - Phase: MVP foundations (tree schema + CLI scaffolding).
 - Implemented: v1 task tree schema, canonical JSON writing, invariant checks, deterministic leaf selection.
 - Commands: `runner init|validate|select` (init creates `.runner/` placeholders + schema/tree).
-- Guards: `just ci` currently runs Markdown checks via `rumdl`.
+- Guards: `just ci` runs Rust `fmt --check`, `clippy`, `test` + `rumdl check`.
