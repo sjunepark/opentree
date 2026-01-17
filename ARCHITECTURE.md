@@ -4,7 +4,7 @@ This document is the canonical technical reference for the **deterministic local
 
 - Vision principles: `VISION.md`
 - Decision log (dated rationale): `DECISIONS.md`
-- Project-level goal/spec provided to each iteration: `.runner/GOAL.md`
+- Project-level goal/spec provided to each iteration: `.runner/GOAL.md` (YAML frontmatter includes `id`, set by `runner start`)
 
 Note on paths: in this document, `.runner/...` and `schemas/...` refer to paths in the **target project
 repo root**. `runner init` creates the `.runner/` directory and placeholder files in the target project.
