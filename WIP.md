@@ -14,6 +14,9 @@
   - Split changes into Conventional Commits and commit.
   - Ensure docs match behavior (`config.toml`, budgets, failure-commit semantics).
 - Land Plan 5 testing harness + fixtures + docs (commit + CI).
+- Define + document stuck-node policy:
+  - Decide behavior when selected leaf is stuck (hard-stop vs auto-decompose vs require human edit).
+  - Record decision in `DECISIONS.md` and update `ARCHITECTURE.md`.
 - Add missing MVP commands:
   - `runner validate`:
     - Validate `.runner/` layout + required files.
@@ -23,9 +26,6 @@
   - `runner select`:
     - Print deterministic next leaf (id + path + attempts/max_attempts), or exit non-zero if complete.
     - Detect “stuck” leaf (attempts == max_attempts) and surface it clearly.
-- Define + implement stuck policy:
-  - Decide what runner should do when selected leaf is stuck (hard-stop vs auto-decompose vs require human edit).
-  - Encode as deterministic behavior + document in `DECISIONS.md`/`ARCHITECTURE.md`.
 
 ## Notes
 
