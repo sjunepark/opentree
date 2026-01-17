@@ -113,6 +113,8 @@ Append-only immutable log of all iterations:
 The runner must ensure `.runner/iterations/` is gitignored so future iterations can still start from a
 clean working tree.
 
+For file formats and write order: [`docs/project/iteration-logs.md`](docs/project/iteration-logs.md)
+
 ### 3.4 Extensibility sidecars (no schema drift)
 
 Future features attach to nodes via deterministic sidecars keyed by node id (not by adding schema fields):
@@ -174,6 +176,8 @@ If a node has `passes=true` in the previous committed tree, then in the next tre
 - exist with the same `id`
 - be byte-for-byte identical in canonical form (all fields)
 - appear in the same structural position (same parent + sibling ordering keys)
+
+For validation implementation details: [`docs/project/tree-validation.md`](docs/project/tree-validation.md)
 
 ## 5) Core Loop as a Deterministic State Machine
 
@@ -515,6 +519,8 @@ Minimum recommended contents:
 Optional:
 
 - `diff.patch`
+
+For file formats and structure: [`docs/project/iteration-logs.md`](docs/project/iteration-logs.md)
 
 ## 12) Open Decisions (Need Human Input)
 
