@@ -18,7 +18,7 @@ Run context:
 
 Guards:
 
-- `just ci` (currently runs Markdown checks via `rumdl`).
+- `just ci` (runs Rust `fmt --check`, `clippy`, `test` + `rumdl check`).
 
 ## Quickstart (MVP)
 
