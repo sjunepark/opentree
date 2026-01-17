@@ -7,7 +7,7 @@ docs/
 ├── project/    ← Implementation details (must be accurate)
 ├── knowledge/  ← General reference (not project-specific)
 ├── plans/      ← Documentation roadmap (what to write next)
-└── loom/       ← Loom-specific notes
+└── case-studies/ ← Analysis of other projects for insights
 ```
 
 ## project/
@@ -39,3 +39,12 @@ docs/
 | `guard-execution.md` | Medium | Guard execution flow and output handling |
 | `tree-validation.md` | Medium | Invariants and immutability rules |
 | `iteration-logs.md` | Low | Log directory structure |
+
+## case-studies/
+
+**Analysis of other projects.** Insights, patterns, and takeaways to consider for our project.
+
+| Directory | Description |
+|-----------|-------------|
+| `loom/` | Loom runtime analysis and lessons learned |
+| `automaker/` | Autonomous AI dev studio - provider abstraction, state machines, event streaming |
