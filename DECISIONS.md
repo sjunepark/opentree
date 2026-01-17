@@ -117,8 +117,8 @@ Invariants:
 - Status: accepted
 - Decision:
   - Increment `attempts` on `done` + guards fail, or on `retry` (guards skipped).
-  - `attempts` only increments for iterations that actually reached an agent execution; pre-flight
-    errors (git policy, missing run id, etc.) do not count as attempts.
+  - `attempts` only increments from successful agent outputs via `apply_state_updates()`;
+    runner-internal failures (timeouts, parse errors, guard errors, git failures) never increment.
   - Attempt exhaustion saturates at `max_attempts` (no hard error in MVP).
   - Runner overwrites runner-owned fields (`passes`, `attempts`) deterministically from the previous
     tree before applying updates (agent edits are ignored).
