@@ -494,64 +494,38 @@ fn summarize_tree_inner(node: &Node, depth: usize, max_nodes: usize, lines: &mut
 mod tests {
     use super::*;
     use crate::core::types::AgentOutput;
-    use crate::io::executor::Executor;
+    use crate::io::git::Git;
     use crate::io::guards::GuardRunner;
-    use crate::start::start_run;
+    use crate::test_support::{
+        ScriptedExec, ScriptedExecutor, ScriptedGuard, ScriptedGuardRunner, TestRepo,
+        load_tree_fixture,
+    };
     use crate::tree::default_tree;
-    use std::process::Command;
-
-    struct FakeExecutor {
-        output: AgentOutput,
-        tree_update: Option<Node>,
-    }
-
-    impl Executor for FakeExecutor {
-        fn exec(&self, request: &ExecRequest) -> Result<()> {
-            let mut buf = serde_json::to_string_pretty(&self.output)?;
-            buf.push('\n');
-            fs::write(&request.output_path, buf)?;
-            if let Some(tree) = &self.tree_update {
-                write_tree(&request.workdir.join(".runner/state/tree.json"), tree)?;
-            }
-            Ok(())
-        }
-    }
-
-    struct FakeGuardRunner {
-        outcome: GuardOutcome,
-    }
-
-    impl GuardRunner for FakeGuardRunner {
-        fn run(&self, request: &GuardRequest) -> Result<GuardOutcome> {
-            fs::write(&request.log_path, "guard output")?;
-            Ok(self.outcome)
-        }
-    }
 
     /// Verifies a retry iteration updates run_state and writes iteration logs.
     ///
-    /// Uses FakeExecutor returning Retry status. Asserts:
+    /// Uses scripted executor returning Retry status. Asserts:
     /// - run_state.next_iter increments
     /// - run_state.last_status is Retry
     /// - Iteration logs (meta, output, tree snapshots) exist
     /// - No guard.log (guards skipped for retry)
     #[test]
     fn step_updates_run_state_and_tree_on_retry() {
-        let temp = tempfile::tempdir().expect("tempdir");
-        let root = temp.path();
-        init_git_repo(root);
-        start_run(root).expect("start");
+        let repo = TestRepo::new().expect("repo");
+        let root = repo.root();
+        repo.start_run().expect("start");
 
-        let executor = FakeExecutor {
+        let executor = ScriptedExecutor::new(vec![ScriptedExec {
             output: AgentOutput {
                 status: AgentStatus::Retry,
                 summary: "needs more".to_string(),
             },
             tree_update: None,
-        };
-        let guard_runner = FakeGuardRunner {
+        }]);
+        let guard_runner = ScriptedGuardRunner::new(vec![ScriptedGuard {
             outcome: GuardOutcome::Pass,
-        };
+            log: "guard output".to_string(),
+        }]);
 
         let outcome =
             run_step(root, &executor, &guard_runner, &StepConfig::default()).expect("step");
@@ -572,32 +546,34 @@ mod tests {
         assert!(iter_dir.join("tree.before.json").exists());
         assert!(iter_dir.join("tree.after.json").exists());
         assert!(!iter_dir.join("guard.log").exists());
+        assert_eq!(guard_runner.remaining(), 1);
+        executor.assert_drained().expect("executor drained");
     }
 
     /// Verifies Done + Pass marks the node as passed and writes guard log.
     ///
-    /// Uses FakeExecutor returning Done status with passing guards. Asserts:
+    /// Uses scripted executor returning Done status with passing guards. Asserts:
     /// - outcome.guard is Pass
     /// - guard.log exists (guards ran)
     /// - tree.passes is true (node completed successfully)
     /// - Iteration logs exist
     #[test]
     fn step_marks_done_and_writes_guard_log() {
-        let temp = tempfile::tempdir().expect("tempdir");
-        let root = temp.path();
-        init_git_repo(root);
-        start_run(root).expect("start");
+        let repo = TestRepo::new().expect("repo");
+        let root = repo.root();
+        repo.start_run().expect("start");
 
-        let executor = FakeExecutor {
+        let executor = ScriptedExecutor::new(vec![ScriptedExec {
             output: AgentOutput {
                 status: AgentStatus::Done,
                 summary: "done".to_string(),
             },
             tree_update: None,
-        };
-        let guard_runner = FakeGuardRunner {
+        }]);
+        let guard_runner = ScriptedGuardRunner::new(vec![ScriptedGuard {
             outcome: GuardOutcome::Pass,
-        };
+            log: "guard output".to_string(),
+        }]);
 
         let outcome =
             run_step(root, &executor, &guard_runner, &StepConfig::default()).expect("step");
@@ -623,30 +599,41 @@ mod tests {
             .join(outcome.iter.to_string());
         assert!(iter_dir.join("meta.json").exists());
         assert!(iter_dir.join("output.json").exists());
+        guard_runner.assert_drained().expect("guard drained");
+        executor.assert_drained().expect("executor drained");
     }
 
     /// Verifies guard failure produces a failure log and that the next iteration includes it in
     /// context.
     #[test]
     fn step_replays_failure_context_after_guard_fail() {
-        let temp = tempfile::tempdir().expect("tempdir");
-        let root = temp.path();
-        init_git_repo(root);
-        start_run(root).expect("start");
+        let repo = TestRepo::new().expect("repo");
+        let root = repo.root();
+        repo.start_run().expect("start");
 
-        let executor1 = FakeExecutor {
-            output: AgentOutput {
-                status: AgentStatus::Done,
-                summary: "done".to_string(),
+        let executor = ScriptedExecutor::new(vec![
+            ScriptedExec {
+                output: AgentOutput {
+                    status: AgentStatus::Done,
+                    summary: "done".to_string(),
+                },
+                tree_update: None,
             },
-            tree_update: None,
-        };
-        let guard_runner_fail = FakeGuardRunner {
+            ScriptedExec {
+                output: AgentOutput {
+                    status: AgentStatus::Retry,
+                    summary: "retry".to_string(),
+                },
+                tree_update: None,
+            },
+        ]);
+        let guard_runner = ScriptedGuardRunner::new(vec![ScriptedGuard {
             outcome: GuardOutcome::Fail,
-        };
+            log: "guard failure".to_string(),
+        }]);
 
         let outcome1 =
-            run_step(root, &executor1, &guard_runner_fail, &StepConfig::default()).expect("step1");
+            run_step(root, &executor, &guard_runner, &StepConfig::default()).expect("step1");
         assert_eq!(outcome1.guard, GuardOutcome::Fail);
 
         let iter1_dir = root
@@ -655,44 +642,42 @@ mod tests {
             .join(outcome1.iter.to_string());
         assert!(iter1_dir.join("guard.log").exists());
 
-        let executor2 = FakeExecutor {
-            output: AgentOutput {
-                status: AgentStatus::Retry,
-                summary: "retry".to_string(),
-            },
-            tree_update: None,
-        };
-        let guard_runner_unused = FakeGuardRunner {
-            outcome: GuardOutcome::Pass,
-        };
-        run_step(
-            root,
-            &executor2,
-            &guard_runner_unused,
-            &StepConfig::default(),
-        )
-        .expect("step2");
+        let tree_after = repo.read_tree().expect("read tree");
+        assert_eq!(tree_after.attempts, 1);
+        assert!(!tree_after.passes);
+
+        run_step(root, &executor, &guard_runner, &StepConfig::default()).expect("step2");
 
         let failure_md = fs::read_to_string(root.join(".runner/context/failure.md"))
             .expect("read .runner/context/failure.md");
-        assert!(failure_md.contains("guard output"));
+        assert!(failure_md.contains("guard failure"));
+        guard_runner.assert_drained().expect("guard drained");
+        executor.assert_drained().expect("executor drained");
     }
 
     /// Verifies runner-internal errors are not propagated into the agent context files.
     #[test]
     fn runner_errors_do_not_propagate_to_agent_context() {
-        let temp = tempfile::tempdir().expect("tempdir");
-        let root = temp.path();
-        init_git_repo(root);
-        start_run(root).expect("start");
+        let repo = TestRepo::new().expect("repo");
+        let root = repo.root();
+        repo.start_run().expect("start");
 
-        let executor = FakeExecutor {
-            output: AgentOutput {
-                status: AgentStatus::Done,
-                summary: "ignored".to_string(),
+        let executor = ScriptedExecutor::new(vec![
+            ScriptedExec {
+                output: AgentOutput {
+                    status: AgentStatus::Done,
+                    summary: "ignored".to_string(),
+                },
+                tree_update: None,
             },
-            tree_update: None,
-        };
+            ScriptedExec {
+                output: AgentOutput {
+                    status: AgentStatus::Retry,
+                    summary: "needs work".to_string(),
+                },
+                tree_update: None,
+            },
+        ]);
 
         struct AlwaysFailGuardRunner;
         impl GuardRunner for AlwaysFailGuardRunner {
@@ -723,17 +708,8 @@ mod tests {
         assert_eq!(tree.attempts, 0);
 
         // Next step should not include the runner error in history/failure context.
-        let executor2 = FakeExecutor {
-            output: AgentOutput {
-                status: AgentStatus::Retry,
-                summary: "needs work".to_string(),
-            },
-            tree_update: None,
-        };
-        let guard_runner2 = FakeGuardRunner {
-            outcome: GuardOutcome::Pass,
-        };
-        run_step(root, &executor2, &guard_runner2, &StepConfig::default()).expect("step2");
+        let guard_runner2 = ScriptedGuardRunner::new(Vec::new());
+        run_step(root, &executor, &guard_runner2, &StepConfig::default()).expect("step2");
 
         let history_md = fs::read_to_string(root.join(".runner/context/history.md"))
             .expect("read .runner/context/history.md");
@@ -742,36 +718,35 @@ mod tests {
         let failure_md = fs::read_to_string(root.join(".runner/context/failure.md"))
             .expect("read .runner/context/failure.md");
         assert!(!failure_md.contains("boom"));
+
+        executor.assert_drained().expect("executor drained");
     }
 
     /// Verifies decomposition adds children to the tree and skips guards.
     ///
-    /// Uses FakeExecutor returning Decomposed status with tree update. Asserts:
+    /// Uses scripted executor returning Decomposed status with tree update. Asserts:
     /// - outcome.status is Decomposed
     /// - Tree has new children added
     /// - No guard.log (guards skipped for decomposition)
     #[test]
     fn step_accepts_decomposition() {
-        let temp = tempfile::tempdir().expect("tempdir");
-        let root = temp.path();
-        init_git_repo(root);
-        start_run(root).expect("start");
+        let repo = TestRepo::new().expect("repo");
+        let root = repo.root();
+        repo.start_run().expect("start");
 
         let mut decomposed = default_tree();
         decomposed
             .children
             .push(crate::test_support::node("child", 0));
 
-        let executor = FakeExecutor {
+        let executor = ScriptedExecutor::new(vec![ScriptedExec {
             output: AgentOutput {
                 status: AgentStatus::Decomposed,
                 summary: "split".to_string(),
             },
             tree_update: Some(decomposed),
-        };
-        let guard_runner = FakeGuardRunner {
-            outcome: GuardOutcome::Pass,
-        };
+        }]);
+        let guard_runner = ScriptedGuardRunner::new(Vec::new());
 
         let outcome =
             run_step(root, &executor, &guard_runner, &StepConfig::default()).expect("step");
@@ -789,43 +764,160 @@ mod tests {
             .join(&outcome.run_id)
             .join(outcome.iter.to_string());
         assert!(!iter_dir.join("guard.log").exists());
+        guard_runner.assert_drained().expect("guard drained");
+        executor.assert_drained().expect("executor drained");
     }
 
-    fn init_git_repo(root: &Path) {
-        let status = Command::new("git")
-            .arg("init")
-            .current_dir(root)
-            .status()
-            .expect("git init");
-        assert!(status.success());
+    /// Verifies retry then done writes history context and guard log on the second iter.
+    #[test]
+    fn step_retries_then_done_writes_history_and_guards() {
+        let repo = TestRepo::new().expect("repo");
+        let root = repo.root();
+        let start = repo.start_run().expect("start");
 
-        let status = Command::new("git")
-            .args(["config", "user.email", "test@example.com"])
-            .current_dir(root)
-            .status()
-            .expect("git config email");
-        assert!(status.success());
+        let executor = ScriptedExecutor::new(vec![
+            ScriptedExec {
+                output: AgentOutput {
+                    status: AgentStatus::Retry,
+                    summary: "needs more".to_string(),
+                },
+                tree_update: None,
+            },
+            ScriptedExec {
+                output: AgentOutput {
+                    status: AgentStatus::Done,
+                    summary: "done".to_string(),
+                },
+                tree_update: None,
+            },
+        ]);
+        let guard_runner = ScriptedGuardRunner::new(vec![ScriptedGuard {
+            outcome: GuardOutcome::Pass,
+            log: "guard ok".to_string(),
+        }]);
 
-        let status = Command::new("git")
-            .args(["config", "user.name", "test"])
-            .current_dir(root)
-            .status()
-            .expect("git config name");
-        assert!(status.success());
+        let outcome1 =
+            run_step(root, &executor, &guard_runner, &StepConfig::default()).expect("step1");
+        assert_eq!(outcome1.guard, GuardOutcome::Skipped);
 
-        fs::write(root.join("README.md"), "hi\n").expect("write");
-        let status = Command::new("git")
-            .args(["add", "README.md"])
-            .current_dir(root)
-            .status()
-            .expect("git add");
-        assert!(status.success());
+        let iter1_dir = root
+            .join(".runner/iterations")
+            .join(&start.run_id)
+            .join(outcome1.iter.to_string());
+        assert!(iter1_dir.join("meta.json").exists());
+        assert!(iter1_dir.join("output.json").exists());
+        assert!(iter1_dir.join("tree.before.json").exists());
+        assert!(iter1_dir.join("tree.after.json").exists());
+        assert!(!iter1_dir.join("guard.log").exists());
 
-        let status = Command::new("git")
-            .args(["commit", "-m", "chore: init"])
-            .current_dir(root)
-            .status()
-            .expect("git commit");
-        assert!(status.success());
+        let outcome2 =
+            run_step(root, &executor, &guard_runner, &StepConfig::default()).expect("step2");
+        assert_eq!(outcome2.guard, GuardOutcome::Pass);
+
+        let iter2_dir = root
+            .join(".runner/iterations")
+            .join(&start.run_id)
+            .join(outcome2.iter.to_string());
+        assert!(iter2_dir.join("meta.json").exists());
+        assert!(iter2_dir.join("output.json").exists());
+        assert!(iter2_dir.join("tree.before.json").exists());
+        assert!(iter2_dir.join("tree.after.json").exists());
+        assert!(iter2_dir.join("guard.log").exists());
+
+        let run_state = repo.read_run_state().expect("run state");
+        assert_eq!(run_state.next_iter, 3);
+        assert_eq!(run_state.last_status, Some(AgentStatus::Done));
+        assert_eq!(run_state.last_guard, Some(GuardOutcome::Pass));
+
+        let history_md = fs::read_to_string(root.join(".runner/context/history.md"))
+            .expect("read .runner/context/history.md");
+        assert!(history_md.contains("needs more"));
+
+        guard_runner.assert_drained().expect("guard drained");
+        executor.assert_drained().expect("executor drained");
+    }
+
+    /// Verifies decomposed status without children triggers a status invariant error.
+    #[test]
+    fn step_errors_when_decomposed_without_children() {
+        let repo = TestRepo::new().expect("repo");
+        let root = repo.root();
+        let start = repo.start_run().expect("start");
+
+        let fixture = load_tree_fixture("simple_tree").expect("fixture");
+        repo.write_tree(&fixture).expect("write tree");
+        let git = Git::new(root);
+        git.add_all().expect("git add");
+        assert!(git.commit_staged("chore: fixture").expect("git commit"));
+
+        let executor = ScriptedExecutor::new(vec![ScriptedExec {
+            output: AgentOutput {
+                status: AgentStatus::Decomposed,
+                summary: "missing children".to_string(),
+            },
+            tree_update: None,
+        }]);
+        let guard_runner = ScriptedGuardRunner::new(Vec::new());
+
+        let err =
+            run_step(root, &executor, &guard_runner, &StepConfig::default()).expect_err("step");
+        assert!(err.to_string().contains("status=decomposed"));
+
+        let iter_dir = root
+            .join(".runner/iterations")
+            .join(&start.run_id)
+            .join("1");
+        let runner_error =
+            fs::read_to_string(iter_dir.join("runner_error.log")).expect("read runner_error.log");
+        assert!(runner_error.contains("status=decomposed"));
+
+        guard_runner.assert_drained().expect("guard drained");
+        executor.assert_drained().expect("executor drained");
+    }
+
+    /// Verifies passed-node immutability violations are detected and logged.
+    #[test]
+    fn step_detects_passed_node_immutability_violation() {
+        let repo = TestRepo::new().expect("repo");
+        let root = repo.root();
+        let start = repo.start_run().expect("start");
+
+        let fixture = load_tree_fixture("tree_with_passed_node").expect("fixture");
+        repo.write_tree(&fixture).expect("write tree");
+        let git = Git::new(root);
+        git.add_all().expect("git add");
+        assert!(git.commit_staged("chore: fixture").expect("git commit"));
+
+        let mut mutated = fixture.clone();
+        if let Some(passed_node) = mutated.children.first_mut() {
+            passed_node.title = "mutated".to_string();
+        }
+
+        let executor = ScriptedExecutor::new(vec![ScriptedExec {
+            output: AgentOutput {
+                status: AgentStatus::Retry,
+                summary: "retry".to_string(),
+            },
+            tree_update: Some(mutated),
+        }]);
+        let guard_runner = ScriptedGuardRunner::new(Vec::new());
+
+        let err =
+            run_step(root, &executor, &guard_runner, &StepConfig::default()).expect_err("step");
+        assert!(err.to_string().contains("immutability failed"));
+
+        let stored = repo.read_tree().expect("read tree");
+        assert_eq!(stored, fixture);
+
+        let iter_dir = root
+            .join(".runner/iterations")
+            .join(&start.run_id)
+            .join("1");
+        let runner_error =
+            fs::read_to_string(iter_dir.join("runner_error.log")).expect("read runner_error.log");
+        assert!(runner_error.contains("immutability"));
+
+        guard_runner.assert_drained().expect("guard drained");
+        executor.assert_drained().expect("executor drained");
     }
 }

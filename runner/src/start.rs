@@ -162,16 +162,8 @@ fn ensure_runner_gitignore(path: &Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::TestRepo;
     use std::process::Command;
-
-    fn run(root: &Path, args: &[&str]) {
-        let status = Command::new(args[0])
-            .args(&args[1..])
-            .current_dir(root)
-            .status()
-            .expect("run command");
-        assert!(status.success(), "command failed: {args:?}");
-    }
 
     fn capture(root: &Path, args: &[&str]) -> String {
         let out = Command::new(args[0])
@@ -185,18 +177,10 @@ mod tests {
 
     #[test]
     fn start_creates_branch_sets_goal_id_and_commits() {
-        let temp = tempfile::tempdir().expect("tempdir");
-        let root = temp.path();
+        let repo = TestRepo::new().expect("repo");
+        let root = repo.root();
 
-        run(root, &["git", "init"]);
-        run(root, &["git", "config", "user.email", "test@example.com"]);
-        run(root, &["git", "config", "user.name", "test"]);
-
-        std::fs::write(root.join("README.md"), "hi\n").expect("write");
-        run(root, &["git", "add", "README.md"]);
-        run(root, &["git", "commit", "-m", "chore: init"]);
-
-        let outcome = start_run(root).expect("start");
+        let outcome = repo.start_run().expect("start");
         let branch = capture(root, &["git", "rev-parse", "--abbrev-ref", "HEAD"]);
         assert_eq!(branch, outcome.branch);
 

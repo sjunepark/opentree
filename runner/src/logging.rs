@@ -8,7 +8,7 @@
 //! - **Iteration logging (`io/iteration_log`)**: Product artifacts in
 //!   `.runner/iterations/`. Always written, unaffected by `RUST_LOG`.
 
-use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
+use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
 /// Initialize tracing subscriber for development logging.
 ///

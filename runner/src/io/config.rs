@@ -129,4 +129,17 @@ mod tests {
         let loaded = load_config(&path).expect("load");
         assert_eq!(loaded, cfg);
     }
+
+    #[test]
+    fn config_fixture_loads() {
+        let cfg = crate::test_support::load_config_fixture("non_default").expect("fixture");
+        assert_eq!(cfg.max_attempts_default, 2);
+        assert_eq!(cfg.iteration_timeout_secs, 120);
+        assert_eq!(cfg.executor_output_limit_bytes, 5000);
+        assert_eq!(cfg.guard_output_limit_bytes, 4000);
+        assert_eq!(
+            cfg.guard.command,
+            vec!["just".to_string(), "ci".to_string()]
+        );
+    }
 }
