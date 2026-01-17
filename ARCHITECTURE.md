@@ -96,6 +96,7 @@ Runner clears and rewrites `context/` at each iteration start. Agent reads this 
 - `.runner/context/goal.md`: current node's goal + acceptance criteria.
 - `.runner/context/history.md`: summary from previous attempt (if retry).
 - `.runner/context/failure.md`: guard failure output from previous attempt (if guards failed).
+
 Assumptions and questions persist in `state/` and are not part of the ephemeral context.
 
 ### 3.3 Iteration logs (`iterations/`) — local-only, gitignored
@@ -511,7 +512,7 @@ All failures point to `(run 'runner start')`.
 To start fresh after editing the goal: change or remove the `id` in GOAL.md, then `runner start`.
 The old branch remains for rollback.
 
-For detailed flow diagrams: [`docs/knowledge/run-id-lifecycle.md`](docs/knowledge/run-id-lifecycle.md)
+For detailed flow diagrams: [`docs/project/run-id-lifecycle.md`](docs/project/run-id-lifecycle.md)
 
 ## 11) Observability (Iteration Logs)
 
