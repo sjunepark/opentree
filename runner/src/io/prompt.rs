@@ -211,6 +211,10 @@ fn render_selected_node(path: &str, node: &Node) -> String {
 ///
 /// Drop order: tree → assumptions → questions → history → failure.
 /// If still over budget after dropping all droppable sections, truncates the last section.
+///
+/// Future: An orchestrator agent will handle budget overflow more intelligently by compacting
+/// existing sections (summarizing, extracting key points) rather than dropping them entirely.
+/// This naive drop-first approach is a placeholder for MVP.
 fn apply_budget(sections: &mut Vec<PromptSection>, budget: usize) {
     let mut total: usize = sections.iter().map(PromptSection::render_len).sum();
     if total <= budget {

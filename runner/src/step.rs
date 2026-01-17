@@ -13,6 +13,8 @@ use crate::core::status_validator::validate_status_invariants;
 use crate::core::types::{AgentStatus, GuardOutcome};
 use crate::io::context::{ContextPayload, write_context};
 use crate::io::executor::{ExecRequest, Executor, execute_and_load};
+use crate::io::git::Git;
+use crate::io::goal::read_goal_id;
 use crate::io::guards::{
     DEFAULT_GUARD_TIMEOUT, DEFAULT_OUTPUT_LIMIT_BYTES, GuardRequest, GuardRunner,
     run_guards_if_needed,
@@ -83,6 +85,7 @@ pub fn run_step<E: Executor, G: GuardRunner>(
     config: &StepConfig,
 ) -> Result<StepOutcome> {
     let start = Instant::now();
+    enforce_git_policy_pre_step(root)?;
     let state_dir = root.join(".runner").join("state");
     let tree_path = state_dir.join("tree.json");
     let schema_path = state_dir.join("schema.json");
@@ -93,7 +96,9 @@ pub fn run_step<E: Executor, G: GuardRunner>(
     let run_id = run_state
         .run_id
         .clone()
-        .unwrap_or_else(|| "run-1".to_string());
+        .ok_or_else(|| anyhow!("missing run id (run `runner start` first)"))?;
+    enforce_run_id_matches_goal(root, &run_id)?;
+    enforce_on_run_branch(root, &run_id)?;
     let iter = run_state.next_iter;
 
     write_output_schema(&output_schema_path)?;
@@ -200,6 +205,15 @@ pub fn run_step<E: Executor, G: GuardRunner>(
     run_state.last_guard = Some(guard_outcome);
     write_run_state(&run_state_path, &run_state)?;
 
+    commit_iteration(
+        root,
+        &run_id,
+        iter,
+        &selected_id,
+        output.status,
+        guard_outcome,
+    )?;
+
     Ok(StepOutcome {
         run_id,
         iter,
@@ -214,6 +228,93 @@ fn load_or_default_run_state(path: &Path) -> Result<RunState> {
         return load_run_state(path);
     }
     Ok(RunState::default())
+}
+
+fn enforce_git_policy_pre_step(root: &Path) -> Result<()> {
+    let git = Git::new(root);
+    let branch = git.current_branch()?;
+    if branch == "main" || branch == "master" {
+        return Err(anyhow!(
+            "refuse to run on '{branch}' (run `runner start` to create runner/<run-id> branch)"
+        ));
+    }
+    git.ensure_clean()?;
+    ensure_runner_gitignore(root)?;
+    Ok(())
+}
+
+fn ensure_runner_gitignore(root: &Path) -> Result<()> {
+    let path = root.join(".runner").join(".gitignore");
+    let contents = fs::read_to_string(&path).with_context(|| format!("read {}", path.display()))?;
+    for required in ["context/", "iterations/"] {
+        if !contents.lines().any(|l| l.trim() == required) {
+            return Err(anyhow!(
+                "missing '{}' in {} (run `runner start`)",
+                required,
+                path.display()
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn enforce_run_id_matches_goal(root: &Path, run_id: &str) -> Result<()> {
+    let goal_path = root.join(".runner").join("GOAL.md");
+    let goal_id = read_goal_id(&goal_path)?.ok_or_else(|| {
+        anyhow!(
+            "missing goal id in {} (run `runner start`)",
+            goal_path.display()
+        )
+    })?;
+    if goal_id != run_id {
+        return Err(anyhow!(
+            "run id mismatch: run_state has '{run_id}' but GOAL.md has '{goal_id}' (run `runner start`)"
+        ));
+    }
+    Ok(())
+}
+
+fn enforce_on_run_branch(root: &Path, run_id: &str) -> Result<()> {
+    let git = Git::new(root);
+    let expected = format!("runner/{run_id}");
+    let branch = git.current_branch()?;
+    if branch != expected {
+        return Err(anyhow!(
+            "expected to be on '{expected}' but on '{branch}' (run `runner start`)"
+        ));
+    }
+    Ok(())
+}
+
+fn commit_iteration(
+    root: &Path,
+    run_id: &str,
+    iter: u32,
+    node_id: &str,
+    status: AgentStatus,
+    guard: GuardOutcome,
+) -> Result<()> {
+    let git = Git::new(root);
+    git.add_all()?;
+
+    let status_str = match status {
+        AgentStatus::Done => "done",
+        AgentStatus::Retry => "retry",
+        AgentStatus::Decomposed => "decomposed",
+    };
+    let guard_str = match guard {
+        GuardOutcome::Pass => "pass",
+        GuardOutcome::Fail => "fail",
+        GuardOutcome::Skipped => "skipped",
+    };
+    let msg = format!(
+        "chore(loop): run {run_id} iter {iter} node {node_id} status={status_str} guard={guard_str}"
+    );
+    let committed = git.commit_staged(&msg)?;
+    if !committed {
+        return Err(anyhow!("expected changes to commit for iteration {iter}"));
+    }
+    Ok(())
 }
 
 fn write_output_schema(path: &Path) -> Result<()> {
@@ -331,8 +432,9 @@ mod tests {
     use crate::core::types::AgentOutput;
     use crate::io::executor::Executor;
     use crate::io::guards::GuardRunner;
-    use crate::io::init::{InitOptions, init_runner};
+    use crate::start::start_run;
     use crate::tree::default_tree;
+    use std::process::Command;
 
     struct FakeExecutor {
         output: AgentOutput,
@@ -373,8 +475,8 @@ mod tests {
     fn step_updates_run_state_and_tree_on_retry() {
         let temp = tempfile::tempdir().expect("tempdir");
         let root = temp.path();
-        init_runner(root, &InitOptions { force: false }).expect("init");
-        write_tree(&root.join(".runner/state/tree.json"), &default_tree()).expect("write tree");
+        init_git_repo(root);
+        start_run(root).expect("start");
 
         let executor = FakeExecutor {
             output: AgentOutput {
@@ -418,8 +520,8 @@ mod tests {
     fn step_marks_done_and_writes_guard_log() {
         let temp = tempfile::tempdir().expect("tempdir");
         let root = temp.path();
-        init_runner(root, &InitOptions { force: false }).expect("init");
-        write_tree(&root.join(".runner/state/tree.json"), &default_tree()).expect("write tree");
+        init_git_repo(root);
+        start_run(root).expect("start");
 
         let executor = FakeExecutor {
             output: AgentOutput {
@@ -468,8 +570,8 @@ mod tests {
     fn step_accepts_decomposition() {
         let temp = tempfile::tempdir().expect("tempdir");
         let root = temp.path();
-        init_runner(root, &InitOptions { force: false }).expect("init");
-        write_tree(&root.join(".runner/state/tree.json"), &default_tree()).expect("write tree");
+        init_git_repo(root);
+        start_run(root).expect("start");
 
         let mut decomposed = default_tree();
         decomposed
@@ -503,5 +605,43 @@ mod tests {
             .join(&outcome.run_id)
             .join(outcome.iter.to_string());
         assert!(!iter_dir.join("guard.log").exists());
+    }
+
+    fn init_git_repo(root: &Path) {
+        let status = Command::new("git")
+            .arg("init")
+            .current_dir(root)
+            .status()
+            .expect("git init");
+        assert!(status.success());
+
+        let status = Command::new("git")
+            .args(["config", "user.email", "test@example.com"])
+            .current_dir(root)
+            .status()
+            .expect("git config email");
+        assert!(status.success());
+
+        let status = Command::new("git")
+            .args(["config", "user.name", "test"])
+            .current_dir(root)
+            .status()
+            .expect("git config name");
+        assert!(status.success());
+
+        fs::write(root.join("README.md"), "hi\n").expect("write");
+        let status = Command::new("git")
+            .args(["add", "README.md"])
+            .current_dir(root)
+            .status()
+            .expect("git add");
+        assert!(status.success());
+
+        let status = Command::new("git")
+            .args(["commit", "-m", "chore: init"])
+            .current_dir(root)
+            .status()
+            .expect("git commit");
+        assert!(status.success());
     }
 }

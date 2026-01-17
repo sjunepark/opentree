@@ -6,6 +6,7 @@ use clap::{Parser, Subcommand};
 use runner::io::executor::CodexExecutor;
 use runner::io::guards::JustGuardRunner;
 use runner::io::init::{InitOptions, init_runner};
+use runner::start::start_run;
 use runner::step::{StepConfig, run_step};
 
 #[derive(Parser)]
@@ -23,6 +24,8 @@ enum Command {
         #[arg(long)]
         force: bool,
     },
+    /// Start a run (creates branch + sets run-id + commits bootstrap).
+    Start,
     /// Execute one deterministic iteration (`runner step`).
     Step {
         /// Prompt pack size budget in bytes.
@@ -37,6 +40,10 @@ fn main() -> Result<()> {
         Command::Init { force } => {
             init_runner(Path::new("."), &InitOptions { force })?;
             println!("initialized .runner/");
+        }
+        Command::Start => {
+            let outcome = start_run(Path::new("."))?;
+            println!("started run={} branch={}", outcome.run_id, outcome.branch);
         }
         Command::Step { prompt_budget } => {
             let executor = CodexExecutor;

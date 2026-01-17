@@ -2,6 +2,8 @@
 
 pub mod context;
 pub mod executor;
+pub mod git;
+pub mod goal;
 pub mod guards;
 pub mod init;
 pub mod iteration_log;
