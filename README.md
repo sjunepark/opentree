@@ -52,7 +52,7 @@ Runner-owned state (long-lived):
 
 - `.runner/state/tree.json` — canonical task tree (v1) written in stable order.
 - `.runner/state/schema.json` — JSON Schema for v1 task trees.
-- `.runner/state/config.json` — runner configuration (guards, defaults, limits).
+- `.runner/state/config.toml` — runner configuration (guards, defaults, limits).
 - `.runner/state/run_state.json` — run/iteration bookkeeping (runner-owned).
 - `.runner/state/assumptions.md` — accumulated assumptions (agent may append).
 - `.runner/state/questions.md` — open questions for human review (agent may append).
