@@ -245,6 +245,9 @@ fn enforce_git_policy_pre_step(root: &Path) -> Result<()> {
 
 fn ensure_runner_gitignore(root: &Path) -> Result<()> {
     let path = root.join(".runner").join(".gitignore");
+    if !path.exists() {
+        return Err(anyhow!("missing {} (run `runner start`)", path.display()));
+    }
     let contents = fs::read_to_string(&path).with_context(|| format!("read {}", path.display()))?;
     for required in ["context/", "iterations/"] {
         if !contents.lines().any(|l| l.trim() == required) {
