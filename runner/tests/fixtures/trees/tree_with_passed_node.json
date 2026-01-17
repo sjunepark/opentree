@@ -1,0 +1,34 @@
+{
+  "id": "root",
+  "order": 0,
+  "title": "Root",
+  "goal": "Root goal",
+  "acceptance": [],
+  "passes": false,
+  "attempts": 0,
+  "max_attempts": 3,
+  "children": [
+    {
+      "id": "done",
+      "order": 0,
+      "title": "Done node",
+      "goal": "Already done",
+      "acceptance": [],
+      "passes": true,
+      "attempts": 1,
+      "max_attempts": 3,
+      "children": []
+    },
+    {
+      "id": "open",
+      "order": 1,
+      "title": "Open node",
+      "goal": "Still open",
+      "acceptance": [],
+      "passes": false,
+      "attempts": 0,
+      "max_attempts": 3,
+      "children": []
+    }
+  ]
+}

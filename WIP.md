@@ -13,6 +13,7 @@
 - Land current changes:
   - Split changes into Conventional Commits and commit.
   - Ensure docs match behavior (`config.toml`, budgets, failure-commit semantics).
+- Land Plan 5 testing harness + fixtures + docs (commit + CI).
 - Add missing MVP commands:
   - `runner validate`:
     - Validate `.runner/` layout + required files.

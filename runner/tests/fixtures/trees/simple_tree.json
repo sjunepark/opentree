@@ -1,0 +1,23 @@
+{
+  "id": "root",
+  "order": 0,
+  "title": "Root",
+  "goal": "Root goal",
+  "acceptance": [],
+  "passes": false,
+  "attempts": 0,
+  "max_attempts": 3,
+  "children": [
+    {
+      "id": "task-1",
+      "order": 0,
+      "title": "Task 1",
+      "goal": "Do task 1",
+      "acceptance": [],
+      "passes": false,
+      "attempts": 0,
+      "max_attempts": 3,
+      "children": []
+    }
+  ]
+}

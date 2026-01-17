@@ -20,6 +20,13 @@ Guards:
 
 - `just ci` (runs Rust `fmt --check`, `clippy`, `test` + `rumdl check`).
 
+## Testing
+
+- `just test` for Rust unit/integration tests, `just ci` for full checks.
+- Harness helpers live in `runner/src/test_support.rs`.
+- Fixtures live in `runner/tests/fixtures/` and stay small/deterministic.
+- Tests must not spawn `codex` or access the network.
+
 ## Quickstart (MVP)
 
 Install (from this repo):

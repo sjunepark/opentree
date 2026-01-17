@@ -1,0 +1,23 @@
+{
+  "id": "root",
+  "order": 0,
+  "title": "Root",
+  "goal": "Root goal",
+  "acceptance": [],
+  "passes": false,
+  "attempts": 0,
+  "max_attempts": 3,
+  "children": [
+    {
+      "id": "stuck",
+      "order": 0,
+      "title": "Stuck leaf",
+      "goal": "Already exhausted attempts",
+      "acceptance": [],
+      "passes": false,
+      "attempts": 2,
+      "max_attempts": 2,
+      "children": []
+    }
+  ]
+}
