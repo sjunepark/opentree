@@ -94,6 +94,7 @@ mod tests {
     use super::*;
     use crate::test_support::{leaf, node, node_with_children};
 
+    /// Passed nodes that remain identical should not trigger errors.
     #[test]
     fn immutability_allows_identical_passed_nodes() {
         let prev = node_with_children("root", 0, vec![leaf("a", 0, true)]);
@@ -101,6 +102,7 @@ mod tests {
         assert!(check_passed_node_immutability(&prev, &next).is_empty());
     }
 
+    /// Deleting a passed node must be reported as an error.
     #[test]
     fn immutability_reports_missing_passed_node() {
         let prev = node_with_children("root", 0, vec![leaf("a", 0, true)]);
@@ -110,6 +112,7 @@ mod tests {
         assert!(errors.iter().any(|err| err.contains("missing")));
     }
 
+    /// Moving a passed node to a different parent must be reported.
     #[test]
     fn immutability_reports_parent_move() {
         let prev = node_with_children(
@@ -127,6 +130,7 @@ mod tests {
         assert!(errors.iter().any(|err| err.contains("moved")));
     }
 
+    /// Modifying any field of a passed node must be reported.
     #[test]
     fn immutability_reports_changed_node() {
         let prev = node_with_children("root", 0, vec![leaf("a", 0, true)]);
@@ -139,6 +143,7 @@ mod tests {
         assert!(errors.iter().any(|err| err.contains("changed")));
     }
 
+    /// Open nodes (passes=false) can be freely edited or removed.
     #[test]
     fn immutability_allows_open_node_edits_and_removals() {
         let prev = node_with_children("root", 0, vec![leaf("a", 0, false)]);

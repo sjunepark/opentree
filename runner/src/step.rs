@@ -23,6 +23,7 @@ use crate::io::run_state::{RunState, load_run_state, write_run_state};
 use crate::io::tree_store::{load_tree, write_tree};
 use crate::tree::Node;
 
+// REVIEW: Is this the optimal way to define the schema? Inline multiline strings seem fragile
 const AGENT_OUTPUT_SCHEMA: &str = r#"{
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "AgentOutput",
@@ -41,8 +42,10 @@ const AGENT_OUTPUT_SCHEMA: &str = r#"{
 }
 "#;
 
+/// Configuration for a single step iteration.
 #[derive(Debug, Clone)]
 pub struct StepConfig {
+    /// Maximum bytes for the prompt pack before dropping sections.
     pub prompt_budget_bytes: usize,
 }
 
@@ -54,15 +57,25 @@ impl Default for StepConfig {
     }
 }
 
+/// Result of a single step iteration.
 #[derive(Debug, Clone)]
 pub struct StepOutcome {
+    /// Identifier for the current execution run.
     pub run_id: String,
+    /// Iteration number (1-indexed).
     pub iter: u32,
+    /// ID of the node that was worked on.
     pub selected_id: String,
+    /// Status declared by the agent.
     pub status: AgentStatus,
+    /// Guard outcome (pass/fail/skipped).
     pub guard: GuardOutcome,
 }
 
+/// Execute one deterministic iteration of the agent loop.
+///
+/// Selects the leftmost open leaf, writes context, executes the agent,
+/// validates output, runs guards if needed, and updates state.
 pub fn run_step<E: Executor, G: GuardRunner>(
     root: &Path,
     executor: &E,
@@ -349,6 +362,13 @@ mod tests {
         }
     }
 
+    /// Verifies a retry iteration updates run_state and writes iteration logs.
+    ///
+    /// Uses FakeExecutor returning Retry status. Asserts:
+    /// - run_state.next_iter increments
+    /// - run_state.last_status is Retry
+    /// - Iteration logs (meta, output, tree snapshots) exist
+    /// - No guard.log (guards skipped for retry)
     #[test]
     fn step_updates_run_state_and_tree_on_retry() {
         let temp = tempfile::tempdir().expect("tempdir");
@@ -387,6 +407,13 @@ mod tests {
         assert!(!iter_dir.join("guard.log").exists());
     }
 
+    /// Verifies Done + Pass marks the node as passed and writes guard log.
+    ///
+    /// Uses FakeExecutor returning Done status with passing guards. Asserts:
+    /// - outcome.guard is Pass
+    /// - guard.log exists (guards ran)
+    /// - tree.passes is true (node completed successfully)
+    /// - Iteration logs exist
     #[test]
     fn step_marks_done_and_writes_guard_log() {
         let temp = tempfile::tempdir().expect("tempdir");
@@ -431,6 +458,12 @@ mod tests {
         assert!(iter_dir.join("output.json").exists());
     }
 
+    /// Verifies decomposition adds children to the tree and skips guards.
+    ///
+    /// Uses FakeExecutor returning Decomposed status with tree update. Asserts:
+    /// - outcome.status is Decomposed
+    /// - Tree has new children added
+    /// - No guard.log (guards skipped for decomposition)
     #[test]
     fn step_accepts_decomposition() {
         let temp = tempfile::tempdir().expect("tempdir");

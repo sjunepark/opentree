@@ -11,19 +11,29 @@ const RUNNER_CONTRACT: &str = "Runner contract:\n- Do not modify passed nodes.\n
 const OUTPUT_CONTRACT: &str =
     "Output contract:\nYou MUST write output.json with `status` and `summary` before session ends.";
 
+/// All inputs needed to build a prompt pack.
 #[derive(Debug, Clone)]
 pub struct PromptInputs {
+    /// Path from root to selected node (e.g., "root/child/leaf").
     pub selected_path: String,
+    /// The selected node to work on.
     pub selected_node: Node,
+    /// Bounded summary of the full tree.
     pub tree_summary: String,
+    /// Goal content from `.runner/context/goal.md`.
     pub context_goal: String,
+    /// History content from `.runner/context/history.md`.
     pub context_history: Option<String>,
+    /// Failure content from `.runner/context/failure.md`.
     pub context_failure: Option<String>,
+    /// Accumulated assumptions from `.runner/state/assumptions.md`.
     pub assumptions: String,
+    /// Open questions from `.runner/state/questions.md`.
     pub questions: String,
 }
 
 impl PromptInputs {
+    /// Load prompt inputs from disk given context and state directories.
     pub fn from_root(
         root: &Path,
         selected_path: String,
@@ -46,16 +56,19 @@ impl PromptInputs {
     }
 }
 
+/// Builds a prompt pack within a byte budget, dropping less critical sections first.
 #[derive(Debug, Clone)]
 pub struct PromptBuilder {
     budget_bytes: usize,
 }
 
 impl PromptBuilder {
+    /// Create a builder with the given byte budget.
     pub fn new(budget_bytes: usize) -> Self {
         Self { budget_bytes }
     }
 
+    /// Build a prompt pack, dropping less critical sections if over budget.
     pub fn build(&self, input: &PromptInputs) -> PromptPack {
         let mut sections = vec![
             PromptSection::required("contract", "Runner Contract", RUNNER_CONTRACT),
@@ -88,12 +101,14 @@ impl PromptBuilder {
     }
 }
 
+/// A rendered prompt ready to send to the executor.
 #[derive(Debug, Clone)]
 pub struct PromptPack {
     pub sections: Vec<PromptSection>,
 }
 
 impl PromptPack {
+    /// Render all sections as a single string.
     pub fn render(&self) -> String {
         let mut buf = String::new();
         for section in &self.sections {
@@ -104,11 +119,16 @@ impl PromptPack {
     }
 }
 
+/// A titled section in the prompt pack.
 #[derive(Debug, Clone)]
 pub struct PromptSection {
+    /// Stable identifier for budget management (e.g., "tree", "goal").
     key: &'static str,
+    /// Human-readable title rendered as markdown header.
     title: String,
+    /// Section body text.
     content: String,
+    /// If true, section cannot be dropped to fit budget.
     required: bool,
 }
 
@@ -160,6 +180,7 @@ impl PromptSection {
     }
 }
 
+/// Read file contents if it exists, returning `None` for missing files.
 fn read_optional(path: impl Into<PathBuf>) -> Result<Option<String>> {
     let path = path.into();
     if !path.exists() {
@@ -170,6 +191,7 @@ fn read_optional(path: impl Into<PathBuf>) -> Result<Option<String>> {
     Ok(Some(contents))
 }
 
+/// Format selected node metadata for the prompt.
 fn render_selected_node(path: &str, node: &Node) -> String {
     let mut buf = String::new();
     buf.push_str(&format!("path: {}\n", path));
@@ -185,6 +207,10 @@ fn render_selected_node(path: &str, node: &Node) -> String {
     buf
 }
 
+/// Drop less critical sections until total size fits within budget.
+///
+/// Drop order: tree → assumptions → questions → history → failure.
+/// If still over budget after dropping all droppable sections, truncates the last section.
 fn apply_budget(sections: &mut Vec<PromptSection>, budget: usize) {
     let mut total: usize = sections.iter().map(PromptSection::render_len).sum();
     if total <= budget {
@@ -222,6 +248,10 @@ mod tests {
     use super::*;
     use crate::tree::default_tree;
 
+    /// Verifies prompt sections appear in deterministic order.
+    ///
+    /// Order matters for prompt consistency: contract → goal → history → failure →
+    /// selected → tree → assumptions → questions → output.
     #[test]
     fn prompt_ordering_is_stable() {
         let input = PromptInputs {
@@ -253,6 +283,10 @@ mod tests {
         );
     }
 
+    /// Verifies budget enforcement drops less critical sections first.
+    ///
+    /// With a tight budget, tree and assumptions (low priority) should be dropped
+    /// while required sections (contract, goal, output) remain.
     #[test]
     fn budget_drops_less_critical_sections_first() {
         let input = PromptInputs {

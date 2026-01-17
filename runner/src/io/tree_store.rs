@@ -10,6 +10,7 @@ use serde_json::Value;
 use crate::core::invariants::validate_invariants;
 use crate::tree::Node;
 
+/// Load and validate tree from disk (schema + invariants).
 pub fn load_tree(schema_path: &Path, tree_path: &Path) -> Result<Node> {
     let tree_contents = fs::read_to_string(tree_path)
         .with_context(|| format!("read tree {}", tree_path.display()))?;
@@ -22,6 +23,7 @@ pub fn load_tree(schema_path: &Path, tree_path: &Path) -> Result<Node> {
     Ok(tree)
 }
 
+/// Write tree to disk with canonicalized formatting (sorted children).
 pub fn write_tree(tree_path: &Path, tree: &Node) -> Result<()> {
     let mut cloned = tree.clone();
     cloned.sort_children();
@@ -63,6 +65,9 @@ mod tests {
     use super::*;
     use crate::tree::default_tree;
 
+    /// Verifies write → load round-trip preserves tree structure.
+    ///
+    /// Writes a tree, loads it back with schema validation, confirms root id matches.
     #[test]
     fn load_and_write_tree_round_trip() {
         let temp = tempfile::tempdir().expect("tempdir");

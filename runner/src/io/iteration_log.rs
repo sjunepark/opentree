@@ -9,6 +9,7 @@ use serde::Serialize;
 use crate::core::types::{AgentOutput, AgentStatus, GuardOutcome};
 use crate::tree::Node;
 
+/// Metadata written to `meta.json` for each iteration.
 #[derive(Debug, Clone, Serialize)]
 pub struct IterationMeta {
     pub run_id: String,
@@ -21,6 +22,7 @@ pub struct IterationMeta {
     pub duration_ms: Option<u64>,
 }
 
+/// Resolved paths for iteration log artifacts.
 #[derive(Debug, Clone)]
 pub struct IterationPaths {
     pub dir: PathBuf,
@@ -49,6 +51,7 @@ impl IterationPaths {
     }
 }
 
+/// All data needed to write a complete iteration log.
 pub struct IterationWriteRequest<'a> {
     pub root: &'a Path,
     pub run_id: &'a str,
@@ -60,6 +63,7 @@ pub struct IterationWriteRequest<'a> {
     pub tree_after: &'a Node,
 }
 
+/// Write all iteration artifacts to `.runner/iterations/{run_id}/{iter}/`.
 pub fn write_iteration(request: &IterationWriteRequest<'_>) -> Result<IterationPaths> {
     let paths = IterationPaths::new(request.root, request.run_id, request.iter);
     fs::create_dir_all(&paths.dir)
@@ -99,6 +103,9 @@ mod tests {
     use crate::core::types::AgentStatus;
     use crate::tree::default_tree;
 
+    /// Verifies IterationPaths resolves to expected directory structure.
+    ///
+    /// Checks that paths follow `.runner/iterations/{run_id}/{iter}/` convention.
     #[test]
     fn iteration_paths_are_stable() {
         let temp = tempfile::tempdir().expect("tempdir");
@@ -112,6 +119,9 @@ mod tests {
         assert!(paths.tree_after_path.ends_with("tree.after.json"));
     }
 
+    /// Verifies write_iteration creates all expected log files.
+    ///
+    /// Writes a complete iteration with guard failure, checks all artifacts exist.
     #[test]
     fn writes_iteration_logs_with_guard_failure() {
         let temp = tempfile::tempdir().expect("tempdir");

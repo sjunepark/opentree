@@ -10,21 +10,31 @@ use wait_timeout::ChildExt;
 
 use crate::core::types::{AgentStatus, GuardOutcome};
 
+/// Default timeout for guard execution (30 minutes).
 pub const DEFAULT_GUARD_TIMEOUT: Duration = Duration::from_secs(30 * 60);
+/// Default output limit to prevent huge logs (1 MB).
 pub const DEFAULT_OUTPUT_LIMIT_BYTES: usize = 1_000_000;
 
+/// Parameters for guard execution.
 #[derive(Debug, Clone)]
 pub struct GuardRequest {
+    /// Working directory for the guard process.
     pub workdir: PathBuf,
+    /// Path to write guard stdout/stderr log.
     pub log_path: PathBuf,
+    /// Maximum time to wait for guards to complete.
     pub timeout: Duration,
+    /// Truncate guard output if it exceeds this size.
     pub output_limit_bytes: usize,
 }
 
+/// Abstraction over guard execution backends.
 pub trait GuardRunner {
+    /// Run guards and return the outcome.
     fn run(&self, request: &GuardRequest) -> Result<GuardOutcome>;
 }
 
+/// Guard runner that executes `just ci`.
 pub struct JustGuardRunner;
 
 impl GuardRunner for JustGuardRunner {
@@ -71,6 +81,7 @@ impl GuardRunner for JustGuardRunner {
     }
 }
 
+/// Run guards only if status is `Done`; otherwise return `Skipped`.
 pub fn run_guards_if_needed<R: GuardRunner>(
     status: AgentStatus,
     runner: &R,
@@ -127,6 +138,9 @@ mod tests {
         }
     }
 
+    /// Verifies guards are skipped when status is not Done.
+    ///
+    /// When agent declares Retry, guards shouldn't run — returns Skipped.
     #[test]
     fn guards_skip_when_not_done() {
         let temp = tempfile::tempdir().expect("tempdir");
@@ -145,6 +159,9 @@ mod tests {
         assert_eq!(outcome, GuardOutcome::Skipped);
     }
 
+    /// Verifies guards actually run when status is Done.
+    ///
+    /// When agent declares Done, guards must run and return their actual outcome.
     #[test]
     fn guards_run_when_done() {
         let temp = tempfile::tempdir().expect("tempdir");

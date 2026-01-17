@@ -9,19 +9,28 @@ use anyhow::{Context, Result, anyhow};
 
 use crate::core::types::AgentOutput;
 
+/// Parameters for an executor invocation.
 #[derive(Debug, Clone)]
 pub struct ExecRequest {
+    /// Working directory for the executor process.
     pub workdir: PathBuf,
+    /// Prompt text to feed to the agent.
     pub prompt: String,
+    /// Path to the JSON Schema that constrains agent output.
     pub output_schema_path: PathBuf,
+    /// Path where the agent must write its output JSON.
     pub output_path: PathBuf,
+    /// Path to write executor stdout/stderr log.
     pub executor_log_path: PathBuf,
 }
 
+/// Abstraction over agent execution backends.
 pub trait Executor {
+    /// Run the agent with the given request. Must write output to `request.output_path`.
     fn exec(&self, request: &ExecRequest) -> Result<()>;
 }
 
+/// Executor that spawns `codex exec`.
 pub struct CodexExecutor;
 
 impl Executor for CodexExecutor {
@@ -69,6 +78,7 @@ impl Executor for CodexExecutor {
     }
 }
 
+/// Execute the agent and load its output.
 pub fn execute_and_load<E: Executor>(executor: &E, request: &ExecRequest) -> Result<AgentOutput> {
     executor.exec(request)?;
     ensure_output_exists(&request.output_path)?;
@@ -123,6 +133,9 @@ mod tests {
         }
     }
 
+    /// Verifies execute_and_load successfully parses agent output.
+    ///
+    /// Uses a FakeExecutor that writes valid output, then checks the parsed result.
     #[test]
     fn execute_and_load_reads_output() {
         let temp = tempfile::tempdir().expect("tempdir");
@@ -144,6 +157,9 @@ mod tests {
         assert_eq!(output.summary, "ok");
     }
 
+    /// Verifies execute_and_load fails when output file is missing.
+    ///
+    /// Uses a FakeExecutor that doesn't write output, expects an error.
     #[test]
     fn execute_and_load_errors_on_missing_output() {
         let temp = tempfile::tempdir().expect("tempdir");

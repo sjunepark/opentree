@@ -136,6 +136,7 @@ mod tests {
     use super::*;
     use crate::test_support::{leaf, node, node_with_children};
 
+    /// Runner-owned fields (passes, attempts) are reset even if agent sets them.
     #[test]
     fn apply_state_updates_overwrites_runner_owned_fields() {
         let prev = node_with_children("root", 0, vec![leaf("a", 0, false)]);
@@ -157,6 +158,7 @@ mod tests {
         assert!(summary.attempts_incremented.is_empty());
     }
 
+    /// Done + Pass sets passes=true and derives parent passes when all children pass.
     #[test]
     fn apply_state_updates_sets_pass_and_derives_internal_passes() {
         let mut prev = node_with_children("root", 0, vec![leaf("a", 0, false), leaf("b", 1, true)]);
@@ -173,6 +175,7 @@ mod tests {
         assert_eq!(summary.derived_passes_set, vec!["root".to_string()]);
     }
 
+    /// Done + Fail increments attempts (agent claimed done but guards failed).
     #[test]
     fn apply_state_updates_increments_attempts_on_guard_fail() {
         let mut prev = node_with_children("root", 0, vec![leaf("a", 0, false)]);
@@ -188,6 +191,7 @@ mod tests {
         assert_eq!(summary.attempts_incremented, vec!["a".to_string()]);
     }
 
+    /// Attempts don't exceed max_attempts (saturation behavior).
     #[test]
     fn apply_state_updates_saturates_attempts_at_max() {
         let mut prev = node_with_children("root", 0, vec![leaf("a", 0, false)]);
@@ -203,6 +207,7 @@ mod tests {
         assert!(summary.attempts_incremented.is_empty());
     }
 
+    /// Missing selected_id returns an error (indicates bug in selection).
     #[test]
     fn apply_state_updates_errors_on_missing_selected_id() {
         let prev = node_with_children("root", 0, vec![leaf("a", 0, false)]);
@@ -218,6 +223,7 @@ mod tests {
         assert!(err.contains("missing"));
     }
 
+    /// New nodes added by agent have runner-owned fields reset to defaults.
     #[test]
     fn apply_state_updates_resets_new_nodes() {
         let prev = node_with_children("root", 0, vec![leaf("a", 0, false)]);
@@ -240,6 +246,7 @@ mod tests {
         assert!(summary.passes_set.is_empty());
     }
 
+    /// Decomposed status never marks passes=true (work is split, not complete).
     #[test]
     fn apply_state_updates_decompose_does_not_mark_pass() {
         let prev = node_with_children("root", 0, vec![leaf("a", 0, false)]);
@@ -258,6 +265,7 @@ mod tests {
         assert!(summary.passes_set.is_empty());
     }
 
+    /// Happy path: Done + Pass propagates passes up through completed subtrees.
     #[test]
     fn apply_state_updates_happy_path_transition() {
         let prev = node_with_children(
@@ -283,6 +291,7 @@ mod tests {
         assert!(summary.derived_passes_set.contains(&"group".to_string()));
     }
 
+    /// Retry status increments attempts (agent wants another try).
     #[test]
     fn apply_state_updates_increments_attempts_on_retry() {
         let mut prev = node_with_children("root", 0, vec![leaf("a", 0, false)]);
@@ -303,6 +312,7 @@ mod tests {
         assert_eq!(summary.attempts_incremented, vec!["a".to_string()]);
     }
 
+    /// Retry also saturates at max_attempts.
     #[test]
     fn apply_state_updates_retry_saturates_attempts_at_max() {
         let mut prev = node_with_children("root", 0, vec![leaf("a", 0, false)]);

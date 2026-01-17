@@ -14,6 +14,7 @@ const TREE_SCHEMA: &str = include_str!(concat!(
     "/../schemas/task_tree/v1.schema.json"
 ));
 
+/// All canonical paths within `.runner/` for a project root.
 #[derive(Debug, Clone)]
 pub struct RunnerPaths {
     pub root: PathBuf,
@@ -60,8 +61,10 @@ impl RunnerPaths {
     }
 }
 
+/// Options for `init_runner`.
 #[derive(Debug, Clone)]
 pub struct InitOptions {
+    /// If true, overwrite existing runner-owned files.
     pub force: bool,
 }
 
@@ -76,6 +79,9 @@ struct GuardConfig {
     command: Vec<String>,
 }
 
+/// Create `.runner/` scaffolding in `root`.
+///
+/// Fails if `.runner/` already exists unless `options.force` is set.
 pub fn init_runner(root: &Path, options: &InitOptions) -> Result<RunnerPaths> {
     let paths = RunnerPaths::new(root);
     if paths.runner_dir.exists() && !options.force {
@@ -158,6 +164,10 @@ mod tests {
         fs::read_to_string(path).expect("read file")
     }
 
+    /// Verifies init_runner creates the complete directory structure and files.
+    ///
+    /// Checks all expected directories (state, context, iterations) and files
+    /// (tree.json, schema.json, config.json, etc.) exist with correct content.
     #[test]
     fn init_creates_expected_layout() {
         let temp = tempfile::tempdir().expect("tempdir");
@@ -189,6 +199,9 @@ mod tests {
         assert_eq!(tree_contents, expected_tree_json);
     }
 
+    /// Verifies init_runner refuses to overwrite without --force.
+    ///
+    /// First init succeeds, second init (without force) fails with "already exists".
     #[test]
     fn init_without_force_refuses_existing_runner_dir() {
         let temp = tempfile::tempdir().expect("tempdir");
@@ -200,6 +213,9 @@ mod tests {
         assert!(msg.contains("already exists"));
     }
 
+    /// Verifies init_runner with --force overwrites customized files.
+    ///
+    /// Writes custom content to files, re-inits with force, confirms placeholders restored.
     #[test]
     fn init_with_force_rewrites_placeholders() {
         let temp = tempfile::tempdir().expect("tempdir");

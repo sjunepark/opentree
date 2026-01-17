@@ -91,6 +91,7 @@ mod tests {
     use super::*;
     use crate::test_support::{leaf, node_with_children};
 
+    /// Decomposed status requires children to be added (that's the point of decomposition).
     #[test]
     fn decomposed_requires_children_added() {
         let prev = node_with_children("root", 0, vec![leaf("a", 0, false)]);
@@ -105,6 +106,7 @@ mod tests {
         );
     }
 
+    /// Done status forbids adding children (work is complete, not decomposed).
     #[test]
     fn done_rejects_children_added() {
         let prev = node_with_children("root", 0, vec![leaf("a", 0, false)]);
@@ -117,6 +119,7 @@ mod tests {
         );
     }
 
+    /// Retry status forbids adding children (retry = try again, not decompose).
     #[test]
     fn retry_rejects_children_added() {
         let prev = node_with_children("root", 0, vec![leaf("a", 0, false)]);
@@ -129,6 +132,7 @@ mod tests {
         );
     }
 
+    /// Decomposed status with children added is valid (happy path).
     #[test]
     fn decomposed_allows_children_added() {
         let prev = node_with_children("root", 0, vec![leaf("a", 0, false)]);
@@ -137,6 +141,7 @@ mod tests {
         assert!(validate_status_invariants(&prev, &next, "a", AgentStatus::Decomposed).is_empty());
     }
 
+    /// Missing selected node in prev tree is an error (indicates bug).
     #[test]
     fn errors_when_selected_missing() {
         let prev = node_with_children("root", 0, vec![]);

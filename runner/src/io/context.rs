@@ -5,13 +5,18 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 
+/// Data to write into `.runner/context/` for the current iteration.
 #[derive(Debug, Clone)]
 pub struct ContextPayload {
+    /// Current node's goal and acceptance criteria.
     pub goal: String,
+    /// Summary from the previous attempt (set on retry).
     pub history: Option<String>,
+    /// Guard output from the previous attempt (set when guards failed).
     pub failure: Option<String>,
 }
 
+/// Resolved paths for context files.
 #[derive(Debug, Clone)]
 pub struct ContextPaths {
     pub dir: PathBuf,
@@ -32,6 +37,7 @@ impl ContextPaths {
     }
 }
 
+/// Clear `.runner/context/` and write fresh ephemeral context files.
 pub fn write_context(root: &Path, payload: &ContextPayload) -> Result<ContextPaths> {
     let paths = ContextPaths::new(root);
     clear_context_dir(&paths.dir)?;
@@ -76,6 +82,10 @@ fn render_optional(title: &str, body: Option<&str>) -> String {
 mod tests {
     use super::*;
 
+    /// Verifies that write_context clears stale files from the context directory.
+    ///
+    /// Creates a stale file, writes new context, and confirms the stale file is gone
+    /// while fresh context files exist.
     #[test]
     fn context_rewrite_clears_previous_files() {
         let temp = tempfile::tempdir().expect("tempdir");
@@ -98,6 +108,10 @@ mod tests {
         assert!(!dir.join("stale.txt").exists());
     }
 
+    /// Verifies optional sections render correctly.
+    ///
+    /// When history is Some, it should appear in the file. When failure is None,
+    /// the file should contain "None." placeholder text.
     #[test]
     fn context_renders_optional_sections() {
         let temp = tempfile::tempdir().expect("tempdir");

@@ -8,12 +8,18 @@ use serde::{Deserialize, Serialize};
 
 use crate::core::types::{AgentStatus, GuardOutcome};
 
+/// Persisted bookkeeping for the current run (`.runner/state/run_state.json`).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct RunState {
+    /// Identifier for the current execution run.
     pub run_id: Option<String>,
+    /// Next iteration number (1-indexed, monotonically increasing).
     pub next_iter: u32,
+    /// Status from the previous iteration's agent output.
     pub last_status: Option<AgentStatus>,
+    /// Summary from the previous iteration's agent output.
     pub last_summary: Option<String>,
+    /// Guard outcome from the previous iteration.
     pub last_guard: Option<GuardOutcome>,
 }
 
@@ -29,6 +35,7 @@ impl Default for RunState {
     }
 }
 
+/// Load run state from disk.
 pub fn load_run_state(path: &Path) -> Result<RunState> {
     let contents =
         fs::read_to_string(path).with_context(|| format!("read run state {}", path.display()))?;
@@ -37,6 +44,7 @@ pub fn load_run_state(path: &Path) -> Result<RunState> {
     Ok(state)
 }
 
+/// Atomically write run state to disk (temp file + rename).
 pub fn write_run_state(path: &Path, state: &RunState) -> Result<()> {
     let mut buf = serde_json::to_string_pretty(state)?;
     buf.push('\n');
@@ -59,6 +67,9 @@ fn write_atomic(path: &Path, contents: &str) -> Result<()> {
 mod tests {
     use super::*;
 
+    /// Verifies write → read preserves all fields.
+    ///
+    /// Writes a fully populated RunState, reads it back, and asserts equality.
     #[test]
     fn run_state_round_trips() {
         let temp = tempfile::tempdir().expect("tempdir");
@@ -77,6 +88,9 @@ mod tests {
         assert_eq!(loaded, state);
     }
 
+    /// Ensures default RunState serializes to a known, stable JSON format.
+    ///
+    /// Guards against accidental changes to the default values or field ordering.
     #[test]
     fn run_state_defaults_are_deterministic() {
         let temp = tempfile::tempdir().expect("tempdir");
