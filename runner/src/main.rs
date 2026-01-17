@@ -25,7 +25,6 @@ const EMPTY_DOC: &str = "";
 const TREE_PATH: &str = ".runner/state/tree.json";
 const SCHEMA_PATH: &str = ".runner/state/schema.json";
 const CONFIG_PATH: &str = ".runner/state/config.json";
-const LEGACY_TREE_PATH: &str = ".runner/tree.json";
 
 #[derive(Parser)]
 #[command(
@@ -72,7 +71,6 @@ fn cmd_init(force: bool) -> Result<()> {
     let tree_path = Path::new(TREE_PATH);
     let schema_path = Path::new(SCHEMA_PATH);
     let config_path = Path::new(CONFIG_PATH);
-    let legacy_tree_path = Path::new(LEGACY_TREE_PATH);
 
     fs::create_dir_all(".runner/state").context("create .runner/state directory")?;
     fs::create_dir_all(".runner/context").context("create .runner/context directory")?;
@@ -91,16 +89,6 @@ fn cmd_init(force: bool) -> Result<()> {
     }
 
     write_if_missing_or_force(config_path, "{}\n", force)?;
-
-    if !force && !tree_path.exists() && legacy_tree_path.exists() {
-        fs::rename(legacy_tree_path, tree_path).with_context(|| {
-            format!(
-                "migrate legacy tree {} -> {}",
-                legacy_tree_path.display(),
-                tree_path.display()
-            )
-        })?;
-    }
 
     if force || !tree_path.exists() {
         let mut tree = default_tree();

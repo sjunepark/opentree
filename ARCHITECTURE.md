@@ -299,7 +299,7 @@ Locked MVP policy (per `DECISIONS.md`):
 - Require clean working tree at iteration start (`git status --porcelain` empty, including untracked).
 - Commit every iteration (including failures).
 - Commit messages are deterministic and use Conventional Commits:
-  - `chore(loop): run <run-id> iter <iter-n> node <node-id> <decompose|execute> guard=<pass|fail|skipped>`
+  - `chore(loop): run <run-id> iter <iter-n> node <node-id> status=<done|retry|decomposed> guard=<pass|fail|skipped>`
 
 ## 10) Observability (Iteration Logs)
 
@@ -311,7 +311,7 @@ Minimum recommended contents:
 
 - `meta.json`
 - `executor.log`
-- `guard.log` (EXECUTE only)
+- `guard.log` (`status=done` only)
 - `tree.before.json` / `tree.after.json` (canonical snapshots)
 
 Optional:

@@ -2,7 +2,7 @@
 
 ## Now
 
-- Completed `.plan/3` runner core-first work (classifier + immutability + state updates).
+- Completed `.plan/3` runner core-first work (immutability + state updates).
 - Documented agent-declared status model in DECISIONS.md, ARCHITECTURE.md, VISION.md.
 - Migrated runner CLI paths to `.runner/state/` + `.runner/context/` (init/validate/select + README/.gitignore).
 - Added agent-declared output types (`AgentStatus`, `AgentOutput`) + status invariant validator.

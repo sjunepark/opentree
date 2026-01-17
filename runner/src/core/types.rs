@@ -23,19 +23,7 @@ pub struct AgentOutput {
     pub summary: String,
 }
 
-/// Iteration classification derived from changed paths.
-///
-/// The runner must classify deterministically: the same list of paths always
-/// yields the same `Mode`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Mode {
-    /// Only `.runner/` paths changed; agent decomposed work without executing.
-    Decompose,
-    /// Any non-`.runner/` path changed; agent executed work.
-    Execute,
-}
-
-/// Result of running guards after an EXECUTE iteration.
+/// Result of running guards after an iteration.
 ///
 /// Guards are deterministic: a given command and inputs always yield the same
 /// outcome classification.
@@ -45,7 +33,7 @@ pub enum GuardOutcome {
     Pass,
     /// Guards completed with failures.
     Fail,
-    /// Guards were not run (e.g., DECOMPOSE mode).
+    /// Guards were not run (e.g., agent did not declare `status: done`).
     Skipped,
 }
 
