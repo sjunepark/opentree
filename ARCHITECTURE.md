@@ -49,7 +49,7 @@ Runner responsibilities:
 - Run guards (`just ci`) only when agent declares `status: done`.
 - Apply runner-owned state transitions (`passes`, `attempts`, derived internal passes).
 - Write iteration logs and commit each iteration with a deterministic message.
-- Determine `stuck` state when `attempts == max_attempts`.
+- Determine `stuck` state when `attempts == max_attempts`; hard-stop the loop.
 
 Agent responsibilities:
 
@@ -209,7 +209,7 @@ Each `step` is one deterministic iteration:
     - write tree atomically (canonical form)
     - write iteration logs (output.json, guard.log, meta.json, tree snapshots)
     - commit the iteration
-13. Stop when `root.passes == true` (no open leaves remain) or `attempts == max_attempts` (stuck).
+13. Stop when `root.passes == true` (no open leaves remain) or `attempts == max_attempts` (stuck → hard-stop with non-zero exit).
 
 ### 5.1 Deterministic recovery: invalid tree
 
@@ -527,6 +527,5 @@ These are not settled yet and materially affect implementation details:
 - Executor structured output:
   - investigate Codex CLI schema output feature
   - investigate Claude Code equivalent
-- Stuck policy:
-  - what happens when `attempts == max_attempts` (escalate? rewrite? expand?)
+- ~~Stuck policy~~ → **decided**: hard-stop (see `DECISIONS.md`)
 - Whether to emit machine-readable events (ex: `events.jsonl`) in MVP or defer.

@@ -146,6 +146,20 @@ Invariants:
   - Guard cycles saved when agent knows work is incomplete.
 - References: `ARCHITECTURE.md`
 
+## 2026-01-17 — Stuck-node policy: hard-stop
+
+- Status: accepted
+- Decision: when `attempts == max_attempts` and `passes == false`, the runner hard-stops the loop.
+- Rationale:
+  - Explicit and predictable—no silent infinite loops or unbounded retries.
+  - Human judgment required when agent cannot solve or decompose after N attempts.
+  - Keeps automation behavior debuggable; user decides next action (increase max_attempts, manual decompose, abandon).
+- Consequences:
+  - `runner step` exits non-zero when it selects a stuck leaf.
+  - `runner select` surfaces stuck state clearly (id + path + attempts/max_attempts).
+  - No auto-decompose or auto-escalation in MVP.
+- References: `ARCHITECTURE.md`
+
 ## 2026-01-17 — Directory structure split (state / context / iterations)
 
 - Status: accepted
