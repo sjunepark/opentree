@@ -217,6 +217,158 @@ If the tree is invalid after an agent session, the runner enters a special **REP
 - prompts the agent to restore schema validity
 - commits the repair attempt (keeping the loop automation-first)
 
+### 5.2 Step orchestration flow (visual)
+
+```mermaid
+flowchart TD
+    subgraph init["1. Initialize"]
+        A["Load run_state.json
+        ─────────────────
+        Get run_id, next_iter,
+        last_status for context"]
+
+        B["Load & validate tree.json
+        ─────────────────
+        Parse tree, check schema,
+        snapshot as prev_tree"]
+    end
+
+    subgraph select["2. Select Target"]
+        C["leftmost_open_leaf()
+        ─────────────────
+        DFS for first node where
+        passes=false, no children"]
+
+        C -->|"None"| DONE["Return: tree complete"]
+        C -->|"Found"| D
+
+        D["Build node path
+        ─────────────────
+        e.g. root/backend/auth
+        for prompt context"]
+    end
+
+    subgraph context["3. Prepare Context"]
+        E["write_context()
+        ─────────────────
+        Clear .runner/context/
+        Write goal.md, history.md,
+        failure.md (if retry/fail)"]
+
+        F["PromptBuilder.build()
+        ─────────────────
+        Assemble sections within
+        budget (default 40KB)"]
+    end
+
+    subgraph exec["4. Execute Agent"]
+        G["execute_and_load()
+        ─────────────────
+        Spawn codex exec with
+        prompt on stdin, wait
+        for output.json"]
+
+        H["Load next_tree
+        ─────────────────
+        Agent may have modified
+        tree.json (decomposition)"]
+    end
+
+    subgraph validate["5. Validate Output"]
+        I["check_passed_node_immutability()
+        ─────────────────
+        Ensure agent didn't touch
+        any node with passes=true"]
+
+        J["validate_status_invariants()
+        ─────────────────
+        done/retry → no new children
+        decomposed → must add children"]
+    end
+
+    subgraph guards["6. Conditional Guards"]
+        K{status?}
+        K -->|"retry"| SKIP["GuardOutcome::Skipped
+        ─────────────────
+        No point running tests
+        on incomplete work"]
+
+        K -->|"done"| L["run just ci
+        ─────────────────
+        Execute guards with
+        30min timeout, capture
+        stdout/stderr"]
+
+        L --> M{exit code?}
+        M -->|"0"| PASS["GuardOutcome::Pass"]
+        M -->|"non-zero"| FAIL["GuardOutcome::Fail"]
+    end
+
+    subgraph update["7. Persist Results"]
+        N["apply_state_updates()
+        ─────────────────
+        retry → attempts += 1
+        done+pass → passes = true
+        done+fail → attempts += 1"]
+
+        O["write_tree()
+        ─────────────────
+        Save updated tree with
+        new attempts/passes values"]
+
+        P["write_iteration()
+        ─────────────────
+        Save meta.json, output.json,
+        guard.log, tree snapshots
+        to iterations/{run}/{iter}/"]
+
+        Q["write_run_state()
+        ─────────────────
+        Increment next_iter,
+        store last_status/summary/guard
+        for next iteration context"]
+    end
+
+    R["Return StepOutcome
+    ─────────────────
+    run_id, iter, selected_id,
+    status, guard outcome"]
+
+    A --> B --> C
+    D --> E --> F --> G --> H
+    H --> I --> J --> K
+    SKIP --> N
+    PASS --> N
+    FAIL --> N
+    N --> O --> P --> Q --> R
+
+    style DONE fill:#2d5a27,color:#fff
+    style PASS fill:#2d5a27,color:#fff
+    style FAIL fill:#8b0000,color:#fff
+    style SKIP fill:#555,color:#fff
+```
+
+#### Guard execution logic
+
+Guards only run when agent claims completion (`done`). A `retry` status means the agent knows it's
+not done, so running expensive CI checks would waste time.
+
+```mermaid
+flowchart LR
+    S[Agent Status] --> R{status}
+    R -->|retry| SK[Skip guards]
+    R -->|done| RG[Run guards]
+
+    RG --> G{guard result}
+    G -->|pass| P["passes = true
+    (node complete)"]
+    G -->|fail| F["attempts += 1
+    (will retry)"]
+
+    SK --> A["attempts += 1
+    (will retry)"]
+```
+
 ## 6) Component Architecture (MVP)
 
 Keep deterministic decision-making separate from I/O. This makes behavior testable and reduces
