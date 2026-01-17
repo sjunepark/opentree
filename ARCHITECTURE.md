@@ -473,7 +473,47 @@ Locked MVP policy (per `DECISIONS.md`):
 - Commit messages are deterministic and use Conventional Commits:
   - `chore(loop): run <run-id> iter <iter-n> node <node-id> status=<done|retry|decomposed> guard=<pass|fail|skipped>`
 
-## 10) Observability (Iteration Logs)
+## 10) Run ID / Goal ID Lifecycle
+
+Each run is uniquely identified by a run ID that must match across three locations:
+
+```mermaid
+flowchart LR
+    subgraph identity["Run Identity (must all match)"]
+        G[".runner/GOAL.md<br/>id: run-abc123"]
+        S["run_state.json<br/>run_id: run-abc123"]
+        B["git branch<br/>runner/run-abc123"]
+    end
+
+    G <-.->|enforced| S <-.->|enforced| B
+```
+
+### `runner start`
+
+1. Reads existing `id` from GOAL.md frontmatter (or generates `run-<sha8>[-suffix]`)
+2. Creates/checkouts `runner/<id>` branch
+3. Writes `id` to GOAL.md frontmatter
+4. Resets `run_state.json` if run_id changed
+5. Commits bootstrap
+
+### `runner step` enforcement
+
+Before any iteration, validates:
+
+- Not on `main`/`master`
+- `run_state.run_id` == GOAL.md `id`
+- Current branch == `runner/<run_id>`
+
+All failures point to `(run 'runner start')`.
+
+### Starting a new run
+
+To start fresh after editing the goal: change or remove the `id` in GOAL.md, then `runner start`.
+The old branch remains for rollback.
+
+For detailed flow diagrams: [`docs/knowledge/run-id-lifecycle.md`](docs/knowledge/run-id-lifecycle.md)
+
+## 11) Observability (Iteration Logs)
 
 Local-only logs live under:
 
@@ -490,7 +530,7 @@ Optional:
 
 - `diff.patch`
 
-## 11) Open Decisions (Need Human Input)
+## 12) Open Decisions (Need Human Input)
 
 These are not settled yet and materially affect implementation details:
 
