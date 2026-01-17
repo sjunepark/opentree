@@ -22,7 +22,10 @@ pub struct Node {
     pub acceptance: Vec<String>,
     /// Whether this node's goal has been achieved.
     pub passes: bool,
-    /// How many times execution has been attempted.
+    /// How many agent executions have been recorded for this node.
+    ///
+    /// Runner-internal failures (e.g., failing to run guards, persist state, or commit)
+    /// do not increment attempts.
     pub attempts: u32,
     /// Upper bound on attempts before the node is considered failed.
     pub max_attempts: u32,

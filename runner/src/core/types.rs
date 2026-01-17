@@ -26,17 +26,16 @@ pub struct AgentOutput {
 /// Result of running guards after an iteration.
 ///
 /// Guards are deterministic: a given command and inputs always yield the same
-/// outcome classification. `Fail` may also be used when the runner cannot
-/// complete the guard phase (e.g., timeout or runner error) — i.e., the selected
-/// node must not pass.
+/// outcome classification.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum GuardOutcome {
     /// Guards completed successfully.
     Pass,
-    /// Guards failed, or the runner could not complete the guard phase.
+    /// Guards ran and failed.
     Fail,
-    /// Guards were not run (e.g., agent did not declare `status: done`).
+    /// Guards were not run (e.g., agent did not declare `status: done`, or the runner errored
+    /// before guards could complete).
     Skipped,
 }
 

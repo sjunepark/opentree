@@ -126,12 +126,9 @@ pub fn run_step<E: Executor, G: GuardRunner>(
 
     let guard_log_path = iter_dir.join("guard.log");
     let runner_error_log_path = iter_dir.join("runner_error.log");
-    // Attempt counters must only move forward once we actually attempt an agent execution.
-    let mut attempted_agent = false;
 
     let attempt = (|| -> Result<(AgentOutput, GuardOutcome, Node)> {
         let exec_timeout = remaining_budget(deadline)?;
-        attempted_agent = true;
 
         let exec_request = ExecRequest {
             workdir: root.to_path_buf(),
@@ -183,7 +180,7 @@ pub fn run_step<E: Executor, G: GuardRunner>(
 
     let output: AgentOutput;
     let guard_outcome: GuardOutcome;
-    let mut tree_after: Node;
+    let tree_after: Node;
     let mut step_error: Option<anyhow::Error> = None;
 
     match attempt {
@@ -207,11 +204,10 @@ pub fn run_step<E: Executor, G: GuardRunner>(
                 status: AgentStatus::Retry,
                 summary: "runner error (see runner_error.log)".to_string(),
             };
-            guard_outcome = GuardOutcome::Fail;
+            guard_outcome = GuardOutcome::Skipped;
+            // Runner-internal failures do not consume node attempts. Attempts increment only from
+            // successful agent outputs via `apply_state_updates()`.
             tree_after = prev_tree.clone();
-            if attempted_agent {
-                increment_attempts(&mut tree_after, &selected_id);
-            }
 
             write_tree(&tree_path, &tree_after)?;
         }
@@ -404,27 +400,6 @@ fn validate_status(prev: &Node, next: &Node, selected_id: &str, status: AgentSta
         return Ok(());
     }
     Err(anyhow!("status invariants failed: {}", errors.join("; ")))
-}
-
-fn increment_attempts(tree: &mut Node, selected_id: &str) {
-    let Some(node) = find_node_mut(tree, selected_id) else {
-        return;
-    };
-    if node.attempts < node.max_attempts {
-        node.attempts += 1;
-    }
-}
-
-fn find_node_mut<'a>(node: &'a mut Node, target_id: &str) -> Option<&'a mut Node> {
-    if node.id == target_id {
-        return Some(node);
-    }
-    for child in &mut node.children {
-        if let Some(found) = find_node_mut(child, target_id) {
-            return Some(found);
-        }
-    }
-    None
 }
 
 fn render_goal(node: &Node) -> String {
@@ -739,6 +714,13 @@ mod tests {
             load_run_state(&root.join(".runner/state/run_state.json")).expect("run state");
         assert_eq!(run_state.last_status, Some(AgentStatus::Retry));
         assert_eq!(run_state.last_summary, None);
+
+        let tree = load_tree(
+            &root.join(".runner/state/schema.json"),
+            &root.join(".runner/state/tree.json"),
+        )
+        .expect("load tree");
+        assert_eq!(tree.attempts, 0);
 
         // Next step should not include the runner error in history/failure context.
         let executor2 = FakeExecutor {

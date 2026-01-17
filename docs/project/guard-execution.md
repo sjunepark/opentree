@@ -30,7 +30,7 @@ The guard shares the iteration timeout budget with the executor — whatever tim
 |-----------|---------|--------|
 | 0 | `Pass` | `passes = true` |
 | non-zero | `Fail` | `attempts += 1` |
-| timeout | `Fail` | logs "guard timed out" |
+| timeout | `Fail` | `attempts += 1`, logs "guard timed out" |
 | skipped | `Skipped` | handled by status rules (retry increments attempts; decomposed doesn't) |
 
 ## Output Capture

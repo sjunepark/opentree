@@ -203,6 +203,7 @@ Each `step` is one deterministic iteration:
 11. Apply deterministic state updates (see [`docs/project/state-updates.md`](docs/project/state-updates.md)):
     - `passes=true` only when `done` + guards pass (runner-owned)
     - increment attempts on `done` + guards fail, or on `retry` (runner-owned)
+    - runner-internal failures do not increment attempts
     - derive internal node passes
 12. Persist:
     - write tree atomically (canonical form)
