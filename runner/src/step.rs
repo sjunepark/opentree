@@ -86,8 +86,6 @@ pub fn run_step<E: Executor, G: GuardRunner>(
     enforce_on_run_branch(root, &run_id)?;
     let iter = run_state.next_iter;
 
-    write_output_schema(&output_schema_path)?;
-
     let prev_tree = load_tree(&schema_path, &tree_path)?;
     let selected = leftmost_open_leaf(&prev_tree)
         .ok_or_else(|| anyhow!("no open leaf found (tree already complete)"))?;
@@ -98,6 +96,16 @@ pub fn run_step<E: Executor, G: GuardRunner>(
 
     let selected_path = find_node_path(&prev_tree, &selected_id)
         .ok_or_else(|| anyhow!("selected node path not found"))?;
+
+    if !selected.passes && selected.attempts == selected.max_attempts {
+        return Err(anyhow!(
+            "stuck leaf selected (hard-stop): id={} path={} attempts={}/{}",
+            selected.id,
+            selected_path,
+            selected.attempts,
+            selected.max_attempts
+        ));
+    }
 
     let goal_body = render_goal(selected);
     let history = history_from_run_state(&run_state);
@@ -128,6 +136,7 @@ pub fn run_step<E: Executor, G: GuardRunner>(
     let runner_error_log_path = iter_dir.join("runner_error.log");
 
     let attempt = (|| -> Result<(AgentOutput, GuardOutcome, Node)> {
+        write_output_schema(&output_schema_path)?;
         let exec_timeout = remaining_budget(deadline)?;
 
         let exec_request = ExecRequest {
@@ -835,6 +844,40 @@ mod tests {
 
         guard_runner.assert_drained().expect("guard drained");
         executor.assert_drained().expect("executor drained");
+    }
+
+    /// Verifies a stuck leaf triggers a hard-stop without invoking the executor.
+    #[test]
+    fn step_hard_stops_on_stuck_leaf() {
+        let repo = TestRepo::new().expect("repo");
+        let root = repo.root();
+        let start = repo.start_run().expect("start");
+
+        let fixture = load_tree_fixture("tree_with_stuck_leaf").expect("fixture");
+        repo.write_tree(&fixture).expect("write tree");
+        let git = Git::new(root);
+        git.add_all().expect("git add");
+        assert!(git.commit_staged("chore: fixture").expect("git commit"));
+
+        let executor = ScriptedExecutor::new(Vec::new());
+        let guard_runner = ScriptedGuardRunner::new(Vec::new());
+
+        let err =
+            run_step(root, &executor, &guard_runner, &StepConfig::default()).expect_err("step");
+        let msg = err.to_string();
+        assert!(msg.contains("stuck leaf selected"));
+        assert!(msg.contains("id=stuck"));
+        assert!(msg.contains("path=root/stuck"));
+        assert!(msg.contains("attempts=2/2"));
+
+        let iter_dir = root
+            .join(".runner/iterations")
+            .join(&start.run_id)
+            .join("1");
+        assert!(!iter_dir.exists());
+
+        assert!(executor.last_request().is_none());
+        assert!(guard_runner.last_request().is_none());
     }
 
     /// Verifies decomposed status without children triggers a status invariant error.
