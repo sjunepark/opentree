@@ -15,11 +15,6 @@ Refactor for agent-declared status model:
 1. **Context writer** — clear and write `context/` each iteration (goal, history, failure)
 2. **Core loop** — read agent output, validate status, conditional guard execution
 
-Research:
-
-- Codex CLI structured output: <https://developers.openai.com/codex/noninteractive/#create-structured-outputs-with-a-schema>
-- Claude Code equivalent for structured output
-
 ## Notes
 
 - Plan CLI needs `pyyaml` when run via `uv run --with pyyaml`.
