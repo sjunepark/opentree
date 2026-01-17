@@ -68,7 +68,7 @@ Agent responsibilities:
 
 - `.runner/state/tree.json`: canonical task tree (strict JSON, canonicalized formatting on write).
 - `.runner/state/schema.json`: versioned schema for tree validation.
-- `.runner/state/config.json`: runner configuration (max_attempts defaults, guards, timeouts).
+- `.runner/state/config.toml`: runner configuration (max_attempts defaults, guards, timeouts, output caps).
 - `.runner/state/run_state.json`: run/iteration bookkeeping (run-id, iter counter, last outcome).
 - `.runner/state/agent_output.schema.json`: JSON Schema for agent output.
 - `.runner/state/assumptions.md`: accumulated assumptions (agent may append).
@@ -200,7 +200,7 @@ Each `step` is one deterministic iteration:
     - **done**: run guards (`just ci`), capture output
     - **retry**: skip guards, increment attempts
     - **decomposed**: validate tree, progress to next node
-11. Apply deterministic state updates:
+11. Apply deterministic state updates (see [`docs/project/state-updates.md`](docs/project/state-updates.md)):
     - `passes=true` only when `done` + guards pass (runner-owned)
     - increment attempts on `done` + guards fail, or on `retry` (runner-owned)
     - derive internal node passes
@@ -351,24 +351,8 @@ flowchart TD
 
 #### Guard execution logic
 
-Guards only run when agent claims completion (`done`). A `retry` status means the agent knows it's
-not done, so running expensive CI checks would waste time.
-
-```mermaid
-flowchart LR
-    S[Agent Status] --> R{status}
-    R -->|retry| SK[Skip guards]
-    R -->|done| RG[Run guards]
-
-    RG --> G{guard result}
-    G -->|pass| P["passes = true
-    (node complete)"]
-    G -->|fail| F["attempts += 1
-    (will retry)"]
-
-    SK --> A["attempts += 1
-    (will retry)"]
-```
+For details on when guards run, timeout/output handling, and outcome semantics, see
+[`docs/project/guard-execution.md`](docs/project/guard-execution.md).
 
 ## 6) Component Architecture (MVP)
 
