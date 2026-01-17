@@ -96,15 +96,6 @@ impl GuardRunner for CommandGuardRunner {
     }
 }
 
-/// Guard runner that executes `just ci`.
-pub struct JustGuardRunner;
-
-impl GuardRunner for JustGuardRunner {
-    fn run(&self, request: &GuardRequest) -> Result<GuardOutcome> {
-        CommandGuardRunner::new(vec!["just".to_string(), "ci".to_string()]).run(request)
-    }
-}
-
 /// Run guards only if status is `Done`; otherwise return `Skipped`.
 pub fn run_guards_if_needed<R: GuardRunner>(
     status: AgentStatus,

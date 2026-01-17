@@ -11,7 +11,7 @@ use crate::core::selector::leftmost_open_leaf;
 use crate::core::state_update::apply_state_updates;
 use crate::core::status_validator::validate_status_invariants;
 use crate::core::types::{AgentOutput, AgentStatus, GuardOutcome};
-use crate::io::config::load_config_with_legacy_fallback;
+use crate::io::config::load_config;
 use crate::io::context::{ContextPayload, write_context};
 use crate::io::executor::{ExecRequest, Executor, execute_and_load};
 use crate::io::git::Git;
@@ -72,10 +72,8 @@ pub fn run_step<E: Executor, G: GuardRunner>(
     let schema_path = state_dir.join("schema.json");
     let run_state_path = state_dir.join("run_state.json");
     let output_schema_path = state_dir.join("agent_output.schema.json");
-    let config_toml_path = state_dir.join("config.toml");
-    let legacy_config_json_path = state_dir.join("config.json");
-
-    let cfg = load_config_with_legacy_fallback(&config_toml_path, &legacy_config_json_path)?;
+    let config_path = state_dir.join("config.toml");
+    let cfg = load_config(&config_path)?;
     let deadline = start + Duration::from_secs(cfg.iteration_timeout_secs);
 
     let mut run_state = load_or_default_run_state(&run_state_path)?;

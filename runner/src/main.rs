@@ -3,7 +3,7 @@ use std::path::Path;
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 
-use runner::io::config::load_config_with_legacy_fallback;
+use runner::io::config::load_config;
 use runner::io::executor::CodexExecutor;
 use runner::io::guards::CommandGuardRunner;
 use runner::io::init::{InitOptions, init_runner};
@@ -49,10 +49,7 @@ fn main() -> Result<()> {
         Command::Step { prompt_budget } => {
             let executor = CodexExecutor;
             let state_dir = Path::new(".").join(".runner").join("state");
-            let cfg = load_config_with_legacy_fallback(
-                &state_dir.join("config.toml"),
-                &state_dir.join("config.json"),
-            )?;
+            let cfg = load_config(&state_dir.join("config.toml"))?;
             let guard_runner = CommandGuardRunner::new(cfg.guard.command);
             let outcome = run_step(
                 Path::new("."),

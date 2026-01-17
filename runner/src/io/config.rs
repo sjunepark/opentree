@@ -89,25 +89,6 @@ pub fn load_config(path: &Path) -> Result<RunnerConfig> {
     Ok(cfg)
 }
 
-/// Load config, falling back to a legacy JSON config if present.
-pub fn load_config_with_legacy_fallback(
-    toml_path: &Path,
-    legacy_json_path: &Path,
-) -> Result<RunnerConfig> {
-    if toml_path.exists() {
-        return load_config(toml_path);
-    }
-    if legacy_json_path.exists() {
-        let contents = fs::read_to_string(legacy_json_path)
-            .with_context(|| format!("read {}", legacy_json_path.display()))?;
-        let cfg: RunnerConfig = serde_json::from_str(&contents)
-            .with_context(|| format!("parse {}", legacy_json_path.display()))?;
-        cfg.validate()?;
-        return Ok(cfg);
-    }
-    load_config(toml_path)
-}
-
 /// Atomically write config to disk (temp file + rename).
 pub fn write_config(path: &Path, cfg: &RunnerConfig) -> Result<()> {
     cfg.validate()?;
@@ -146,20 +127,6 @@ mod tests {
         let cfg = RunnerConfig::default();
         write_config(&path, &cfg).expect("write");
         let loaded = load_config(&path).expect("load");
-        assert_eq!(loaded, cfg);
-    }
-
-    #[test]
-    fn legacy_json_fallback_works() {
-        let temp = tempfile::tempdir().expect("tempdir");
-        let toml_path = temp.path().join("config.toml");
-        let legacy_json_path = temp.path().join("config.json");
-        let cfg = RunnerConfig::default();
-        let mut buf = serde_json::to_string_pretty(&cfg).expect("json");
-        buf.push('\n');
-        fs::write(&legacy_json_path, buf).expect("write json");
-
-        let loaded = load_config_with_legacy_fallback(&toml_path, &legacy_json_path).expect("load");
         assert_eq!(loaded, cfg);
     }
 }
