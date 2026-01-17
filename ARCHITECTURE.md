@@ -44,36 +44,53 @@ Runner responsibilities:
 - Enforce git safety (branch + cleanliness).
 - Load/validate/update/persist the task tree deterministically.
 - Decide which leaf to work on next (deterministic selection).
+- Prepare `context/` directory with goal, history, and failure info for the agent.
 - Build and pass a stable prompt pack to the executor.
-- Run guards (`just ci`) and record results.
+- Run guards (`just ci`) only when agent declares `status: done`.
 - Apply runner-owned state transitions (`passes`, `attempts`, derived internal passes).
 - Write iteration logs and commit each iteration with a deterministic message.
+- Determine `stuck` state when `attempts == max_attempts`.
 
 Agent responsibilities:
 
 - Edit code and/or open nodes to satisfy goals.
-- Record uncertainty in `.runner/ASSUMPTIONS.md` and open questions in `.runner/HUMAN_QUESTIONS.md`.
-- Keep `.runner/tree.json` strictly valid when editing it.
+- Output structured JSON with `status` (`done`/`retry`/`decomposed`) and `summary`.
+- If `decomposed`: must add children to the selected node in the tree.
+- If `done` or `retry`: must not add children to the selected node.
+- Record uncertainty in `.runner/context/` docs (assumptions, open questions).
+- Keep `.runner/state/tree.json` strictly valid when editing it.
 - Never mutate passed nodes; never set `passes=true` (runner-owned).
+- Always output a summary (explicit, not relying on autocompact).
 
 ## 3) Canonical Artifacts (File/Dir Contracts)
 
-### 3.1 Source of truth
+### 3.1 Runner-owned state (`state/`)
 
-- `.runner/tree.json`: canonical task tree (strict JSON, canonicalized formatting on write).
-- `schemas/task_tree/v1.schema.json`: versioned schema for `.runner/tree.json`.
+- `.runner/state/tree.json`: canonical task tree (strict JSON, canonicalized formatting on write).
+- `.runner/state/schema.json`: versioned schema for tree validation.
+- `.runner/state/config.json`: runner configuration (max_attempts defaults, guards, timeouts).
 
-### 3.2 Memory / spec (provided to each iteration; not source of truth)
+Agent may read `state/` but runner-owned fields (`passes`, `attempts`) are overwritten by runner.
 
-- `.runner/GOAL.md` (placeholder; author content per iteration)
-- `.runner/HUMAN_QUESTIONS.md` (placeholder; author content per iteration)
-- `.runner/ASSUMPTIONS.md` (placeholder; author content per iteration)
-- `.runner/FEEDBACK_LOG.md` (placeholder; author content per iteration)
-- `.runner/IMPROVEMENTS.md` (placeholder; author content per iteration)
+### 3.2 Ephemeral context (`context/`)
 
-### 3.3 Iteration logs (local-only; gitignored)
+Runner clears and rewrites `context/` at each iteration start. Agent reads this for iteration context.
 
-- `.runner/iterations/<run-id>/<iter-n>/...`
+- `.runner/context/goal.md`: current node's goal + acceptance criteria.
+- `.runner/context/history.md`: summary from previous attempt (if retry).
+- `.runner/context/failure.md`: guard failure output from previous attempt (if guards failed).
+- `.runner/context/assumptions.md`: accumulated assumptions (agent may append).
+- `.runner/context/questions.md`: open questions for human review (agent may append).
+
+### 3.3 Iteration logs (`iterations/`) — local-only, gitignored
+
+Append-only immutable log of all iterations:
+
+- `.runner/iterations/{run-id}/{iter-n}/output.json`: agent's status + summary.
+- `.runner/iterations/{run-id}/{iter-n}/guard.log`: full guard output (if guards ran).
+- `.runner/iterations/{run-id}/{iter-n}/meta.json`: timing, node id, mode, outcome.
+- `.runner/iterations/{run-id}/{iter-n}/tree.before.json`: tree snapshot before iteration.
+- `.runner/iterations/{run-id}/{iter-n}/tree.after.json`: tree snapshot after iteration.
 
 The runner must ensure `.runner/iterations/` is gitignored so future iterations can still start from a
 clean working tree.
@@ -82,9 +99,9 @@ clean working tree.
 
 Future features attach to nodes via deterministic sidecars keyed by node id (not by adding schema fields):
 
-- `.runner/nodes/<node-id>/context.md`
-- `.runner/nodes/<node-id>/tools.json`
-- `.runner/nodes/<node-id>/artifacts/...`
+- `.runner/nodes/{node-id}/context.md`
+- `.runner/nodes/{node-id}/tools.json`
+- `.runner/nodes/{node-id}/artifacts/...`
 
 ## 4) Task Tree Data Model (v1)
 
@@ -114,12 +131,25 @@ The runner canonicalizes the on-disk tree by sorting `children` arrays according
 ### 4.3 Passing semantics
 
 - Leaf nodes pass only when:
-  - the iteration is classified as **EXECUTE**, and
+  - agent declares `status: done`, and
   - guards succeed (`just ci` exit code 0), and
   - tree invariants pass.
 - Non-leaf nodes pass when **all children pass** (derived by the runner).
+- Guards are skipped when agent declares `status: retry` (save CI cycles on known-incomplete work).
 
-### 4.4 Immutability enforcement
+### 4.4 Agent status invariants
+
+The runner validates consistency between agent status and tree changes:
+
+| Status | Tree constraint |
+|--------|-----------------|
+| `done` | Selected node must NOT have gained children |
+| `retry` | Selected node must NOT have gained children |
+| `decomposed` | Selected node MUST have gained children |
+
+Violation is treated as malformed iteration → retry with error context.
+
+### 4.5 Immutability enforcement
 
 If a node has `passes=true` in the previous committed tree, then in the next tree it must:
 
@@ -134,24 +164,33 @@ Each `step` is one deterministic iteration:
 1. Ensure repo safety:
    - refuse `main`/`master`
    - ensure clean working tree (including untracked)
-2. Load + validate `.runner/tree.json` against schema + invariants.
+2. Load + validate `.runner/state/tree.json` against schema + invariants.
 3. Deterministically select next open leaf.
-4. Build a stable prompt pack.
-5. Invoke the executor (fresh agent session) with a 30-minute wall clock budget shared with guards.
-6. Re-load + validate `.runner/tree.json` (including passed-node immutability).
-7. Classify the iteration:
-   - **EXECUTE** if any non-`.runner/` file changed
-   - **DECOMPOSE** if only `.runner/` files changed
-8. If EXECUTE: run `just ci` and capture stdout/stderr + timing.
-9. Apply deterministic state updates:
-   - `passes=true` only on green guards (runner-owned)
-   - increment attempts on failure (runner-owned)
-   - derive internal node passes
-10. Persist:
+4. Prepare `context/` directory:
+   - clear previous contents
+   - write `goal.md` with selected node's goal + acceptance
+   - write `history.md` with previous attempt summary (if retry)
+   - write `failure.md` with guard output (if previous guards failed)
+5. Build a stable prompt pack.
+6. Invoke the executor (fresh agent session) with a 30-minute wall clock budget.
+7. Read agent output from `iterations/{id}/output.json` (status + summary).
+8. Re-load + validate `.runner/state/tree.json` (including passed-node immutability).
+9. Validate agent status invariants:
+   - `decomposed` → node gained children
+   - `done`/`retry` → node did NOT gain children
+10. Process based on agent status:
+    - **done**: run guards (`just ci`), capture output
+    - **retry**: skip guards, increment attempts
+    - **decomposed**: validate tree, progress to next node
+11. Apply deterministic state updates:
+    - `passes=true` only when `done` + guards pass (runner-owned)
+    - increment attempts on `done` + guards fail, or on `retry` (runner-owned)
+    - derive internal node passes
+12. Persist:
     - write tree atomically (canonical form)
-    - write iteration logs
+    - write iteration logs (output.json, guard.log, meta.json, tree snapshots)
     - commit the iteration
-11. Stop when `root.passes == true` (no open leaves remain).
+13. Stop when `root.passes == true` (no open leaves remain) or `attempts == max_attempts` (stuck).
 
 ### 5.1 Deterministic recovery: invalid tree
 
@@ -166,32 +205,43 @@ If the tree is invalid after an agent session, the runner enters a special **REP
 Keep deterministic decision-making separate from I/O. This makes behavior testable and reduces
 non-deterministic failure modes.
 
-### 6.1 “Core” (pure-ish logic; deterministic)
+### 6.1 "Core" (pure-ish logic; deterministic)
 
 - **Selector**
   - Computes the next open leaf id/path (leftmost open leaf).
 - **Classifier**
-  - Determines DECOMPOSE vs EXECUTE from a list of changed paths.
+  - Determines DECOMPOSE vs EXECUTE from a list of changed paths (for commit message classification).
 - **InvariantChecker**
   - Schema validation (strict) + invariants (immutability, id uniqueness, ordering, etc.).
+- **StatusValidator**
+  - Validates agent status invariants (decomposed → children added, done/retry → no children).
 - **StateUpdater**
   - Applies runner-owned updates (`passes`, `attempts`, derived internal passes).
+- **AgentOutputParser**
+  - Parses agent output JSON, validates status + summary fields.
 
-### 6.2 “Adapters” (I/O boundary; observable side effects)
+### 6.2 "Adapters" (I/O boundary; observable side effects)
 
 - **TreeStore**
-  - Loads tree JSON.
+  - Loads tree JSON from `state/tree.json`.
   - Canonicalizes and atomically writes tree JSON.
+- **ContextWriter**
+  - Clears and writes `context/` directory each iteration.
+  - Writes goal.md, history.md, failure.md based on iteration state.
 - **PromptBuilder**
   - Produces a stable prompt pack (stable ordering and bounded size).
 - **Executor**
   - Stable interface; backends: Codex CLI, Claude CLI.
+  - Must enforce structured JSON output (status + summary).
+  - Must disable autocompact; agent outputs explicit summary.
 - **GuardRunner**
   - Runs `just ci` with timeouts/output caps.
+  - Only invoked when agent status is `done`.
 - **GitManager**
   - Branch policy, clean checks, diffs for classification, deterministic commits.
 - **IterationLogger**
   - Writes local-only `.runner/iterations/...` logs and metadata.
+  - Persists output.json, guard.log, meta.json, tree snapshots.
 
 ## 7) Determinism Rules (Implementation Guardrails)
 
@@ -215,18 +265,31 @@ Determinism is enforced by design constraints plus implementation guardrails:
 
 Executor requirements:
 
-- “Fresh agent session” per iteration.
+- "Fresh agent session" per iteration.
 - Replaceable backends behind a stable interface.
 - Timeouts/output caps applied by the runner.
+- Must enforce structured JSON output with `status` and `summary` fields.
+- Must disable autocompact; agent outputs explicit summary.
+
+Agent output format (written to `iterations/{id}/output.json`):
+
+```json
+{
+  "status": "done" | "retry" | "decomposed",
+  "summary": "Human-readable summary of what was done/attempted..."
+}
+```
 
 Prompt pack (stable order, minimal but sufficient):
 
-1. Runner contract / invariants (especially: immutability, runner-owned fields).
-2. `.runner/GOAL.md`.
-3. Selected leaf path + selected leaf subtree (full).
-4. Deterministic summary of the rest of the tree (bounded).
-5. `.runner/ASSUMPTIONS.md`, `.runner/HUMAN_QUESTIONS.md`, `.runner/FEEDBACK_LOG.md`, `.runner/IMPROVEMENTS.md`.
-6. Guard contract (“runner will run `just ci` after EXECUTE”).
+1. Runner contract / invariants (especially: immutability, runner-owned fields, status requirements).
+2. `.runner/context/goal.md` (current node).
+3. `.runner/context/history.md` (previous attempt summary, if retry).
+4. `.runner/context/failure.md` (guard failure output, if previous guards failed).
+5. Selected leaf path + selected leaf subtree (full).
+6. Deterministic summary of the rest of the tree (bounded).
+7. `.runner/context/assumptions.md`, `.runner/context/questions.md`.
+8. Output contract: "You MUST write output.json with status and summary before session ends."
 
 ## 9) Git Policy (MVP)
 
@@ -263,8 +326,9 @@ These are not settled yet and materially affect implementation details:
   - global max iterations
   - default `max_attempts` for new leaves
   - output caps for executor/guards
-- Enforcement details for runner-owned fields:
-  - hard reject if agent edits `passes`/`attempts` vs overwrite deterministically
-- Attempt exhaustion policy:
-  - what counts as “rewrite” vs “expand” deterministically
+- Executor structured output:
+  - investigate Codex CLI schema output feature
+  - investigate Claude Code equivalent
+- Stuck policy:
+  - what happens when `attempts == max_attempts` (escalate? rewrite? expand?)
 - Whether to emit machine-readable events (ex: `events.jsonl`) in MVP or defer.

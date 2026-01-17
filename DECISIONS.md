@@ -112,17 +112,50 @@ Invariants:
 - Consequences: invariants must distinguish “open and editable” from “passed and immutable”.
 - References: `ARCHITECTURE.md`
 
-## 2026-01-16 — Open questions
+## 2026-01-17 — Runner-owned state transition semantics
 
-- Status: proposed
-- Decision: these are intentionally left open for follow-up.
-- Rationale: MVP needs a working loop, but some defaults and enforcement details can be deferred.
-- Consequences: capture resolutions here as new dated decisions once settled.
-- References: `.runner/HUMAN_QUESTIONS.md` (target project), `ARCHITECTURE.md`
+- Status: accepted
+- Decision:
+  - Increment `attempts` only when an iteration is classified as EXECUTE and guards fail.
+  - Attempt exhaustion saturates at `max_attempts` (no hard error in MVP).
+  - Runner overwrites runner-owned fields (`passes`, `attempts`) deterministically from the previous
+    tree before applying updates (agent edits are ignored).
+- Rationale: keeps state updates deterministic, preserves "no pass without green guards," and avoids
+  introducing new policy branching during MVP.
+- Consequences: runner will ignore agent edits to runner-owned fields for open nodes, and retries
+  continue without raising a hard error when max attempts is reached.
+- References: `ARCHITECTURE.md`
 
-Open questions (as of 2026-01-16):
+## 2026-01-17 — Agent-declared status model
 
-- Default values: global max iterations, `max_attempts`, executor/guard output caps.
-- Runner-owned fields enforcement: hard reject agent edits vs overwrite deterministically.
-- Attempt exhaustion policy: define “rewrite” vs “expand” in a deterministic way.
-- Whether to emit machine-readable events (e.g., `events.jsonl`) in MVP or defer.
+- Status: accepted
+- Decision:
+  - Agents must output a JSON file with `status` (`done`/`retry`/`decomposed`) and `summary` fields.
+  - Guards only run when `status == done`.
+  - A node passes only when agent declares `done` AND guards pass.
+  - `retry` skips guards, increments attempts, persists summary for next iteration.
+  - `decomposed` validates tree gained children, accepts changes, progresses to next node.
+  - `stuck` is not an agent status; runner determines stuck when `attempts == max_attempts`.
+- Rationale: guards verify syntactic correctness (tests pass, lint clean) but cannot assess semantic
+  completeness. Agents know when work is partial. Combining both signals prevents false positives.
+- Consequences:
+  - Agent output format is a contract; executor must enforce structured output.
+  - Runner must validate decompose invariants (children added) and done/retry invariants (no children added).
+  - Guard cycles saved when agent knows work is incomplete.
+- References: `ARCHITECTURE.md`
+
+## 2026-01-17 — Directory structure split (state / context / iterations)
+
+- Status: accepted
+- Decision:
+  - `.runner/state/` — runner-owned canonical state (tree.json, schema.json, config).
+  - `.runner/context/` — ephemeral, cleared and rewritten each iteration by runner for agent consumption.
+  - `.runner/iterations/` — append-only immutable log of all iterations.
+- Rationale: separates concerns; agents read context but don't manage it; runner controls what context
+  agents see; iterations provide audit trail without polluting working state.
+- Consequences:
+  - Runner clears `context/` at iteration start, writes goal/history/failure info.
+  - Agent reads `context/` and `state/tree.json` (read-only for state semantics).
+  - Agent writes `iterations/{id}/output.json` with status + summary.
+  - All formats are JSON for consistency.
+- References: `ARCHITECTURE.md`

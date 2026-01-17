@@ -38,9 +38,16 @@ sequential, validated progress.
 - The loop does not stop for questions.
 - Uncertainty is recorded explicitly as assumptions and open questions for later resolution.
 
+### Agents assess, guards verify
+
+- Guards (CI, tests, linting) verify syntactic correctness but cannot assess semantic completeness.
+- Agents know when work is partial or complete; they declare status explicitly.
+- A node passes only when agent declares "done" AND guards pass.
+- This two-signal model prevents false positives (guards pass but work is incomplete).
+
 ### Validation is the feedback loop
 
-- Formatting/linting/tests are not “nice to have”; they are the mechanism that makes the system
+- Formatting/linting/tests are not "nice to have"; they are the mechanism that makes the system
   self-correcting.
 
 ### Automation-first, UI-secondary

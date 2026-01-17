@@ -5,6 +5,8 @@
 //! deterministic, resumable agent loops.
 
 mod core;
+#[cfg(test)]
+mod test_support;
 mod tree;
 
 use crate::core::invariants::validate_invariants;
@@ -158,6 +160,7 @@ fn validate_schema(instance: &Value, schema: &Value) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::{leaf, node_with_attempts, node_with_children};
 
     #[test]
     fn parse_init() {
@@ -173,51 +176,15 @@ mod tests {
 
     #[test]
     fn sort_children_orders_by_order_then_id() {
-        let mut node = Node {
-            id: "root".to_string(),
-            order: 0,
-            title: "Root".to_string(),
-            goal: "Goal".to_string(),
-            acceptance: Vec::new(),
-            passes: false,
-            attempts: 0,
-            max_attempts: 3,
-            children: vec![
-                Node {
-                    id: "b".to_string(),
-                    order: 2,
-                    title: "B".to_string(),
-                    goal: "B goal".to_string(),
-                    acceptance: Vec::new(),
-                    passes: false,
-                    attempts: 0,
-                    max_attempts: 3,
-                    children: Vec::new(),
-                },
-                Node {
-                    id: "c".to_string(),
-                    order: 1,
-                    title: "C".to_string(),
-                    goal: "C goal".to_string(),
-                    acceptance: Vec::new(),
-                    passes: false,
-                    attempts: 0,
-                    max_attempts: 3,
-                    children: Vec::new(),
-                },
-                Node {
-                    id: "a".to_string(),
-                    order: 1,
-                    title: "A".to_string(),
-                    goal: "A goal".to_string(),
-                    acceptance: Vec::new(),
-                    passes: false,
-                    attempts: 0,
-                    max_attempts: 3,
-                    children: Vec::new(),
-                },
+        let mut node = node_with_children(
+            "root",
+            0,
+            vec![
+                leaf("b", 2, false),
+                leaf("c", 1, false),
+                leaf("a", 1, false),
             ],
-        };
+        );
 
         node.sort_children();
         let ids: Vec<&str> = node
@@ -230,61 +197,15 @@ mod tests {
 
     #[test]
     fn select_leftmost_open_leaf_depth_first() {
-        let tree = Node {
-            id: "root".to_string(),
-            order: 0,
-            title: "Root".to_string(),
-            goal: "Goal".to_string(),
-            acceptance: Vec::new(),
-            passes: false,
-            attempts: 0,
-            max_attempts: 3,
-            children: vec![
-                Node {
-                    id: "a".to_string(),
-                    order: 0,
-                    title: "A".to_string(),
-                    goal: "A goal".to_string(),
-                    acceptance: Vec::new(),
-                    passes: true,
-                    attempts: 0,
-                    max_attempts: 3,
-                    children: Vec::new(),
-                },
-                Node {
-                    id: "b".to_string(),
-                    order: 1,
-                    title: "B".to_string(),
-                    goal: "B goal".to_string(),
-                    acceptance: Vec::new(),
-                    passes: false,
-                    attempts: 0,
-                    max_attempts: 3,
-                    children: vec![Node {
-                        id: "b1".to_string(),
-                        order: 0,
-                        title: "B1".to_string(),
-                        goal: "B1 goal".to_string(),
-                        acceptance: Vec::new(),
-                        passes: false,
-                        attempts: 0,
-                        max_attempts: 3,
-                        children: Vec::new(),
-                    }],
-                },
-                Node {
-                    id: "c".to_string(),
-                    order: 2,
-                    title: "C".to_string(),
-                    goal: "C goal".to_string(),
-                    acceptance: Vec::new(),
-                    passes: false,
-                    attempts: 0,
-                    max_attempts: 3,
-                    children: Vec::new(),
-                },
+        let tree = node_with_children(
+            "root",
+            0,
+            vec![
+                leaf("a", 0, true),
+                node_with_children("b", 1, vec![leaf("b1", 0, false)]),
+                leaf("c", 2, false),
             ],
-        };
+        );
 
         let selected = leftmost_open_leaf(&tree).expect("expected open leaf");
         assert_eq!(selected.id, "b1");
@@ -292,40 +213,16 @@ mod tests {
 
     #[test]
     fn validate_invariants_reports_errors() {
-        let tree = Node {
-            id: "root".to_string(),
-            order: 0,
-            title: "Root".to_string(),
-            goal: "Goal".to_string(),
-            acceptance: Vec::new(),
-            passes: false,
-            attempts: 2,
-            max_attempts: 1,
-            children: vec![
-                Node {
-                    id: "dup".to_string(),
-                    order: 1,
-                    title: "Dup1".to_string(),
-                    goal: "Dup1 goal".to_string(),
-                    acceptance: Vec::new(),
-                    passes: false,
-                    attempts: 0,
-                    max_attempts: 1,
-                    children: Vec::new(),
-                },
-                Node {
-                    id: "dup".to_string(),
-                    order: 0,
-                    title: "Dup2".to_string(),
-                    goal: "Dup2 goal".to_string(),
-                    acceptance: Vec::new(),
-                    passes: false,
-                    attempts: 0,
-                    max_attempts: 1,
-                    children: Vec::new(),
-                },
+        let mut tree = node_with_children(
+            "root",
+            0,
+            vec![
+                node_with_attempts("dup", 1, 0, 1),
+                node_with_attempts("dup", 0, 0, 1),
             ],
-        };
+        );
+        tree.attempts = 2;
+        tree.max_attempts = 1;
 
         let errors = validate_invariants(&tree);
         assert!(errors.iter().any(|err| err.contains("duplicate id")));
