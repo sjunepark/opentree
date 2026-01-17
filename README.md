@@ -62,12 +62,13 @@ Ephemeral context (rewritten each iteration):
 
 - `.runner/context/goal.md` — current node goal + acceptance criteria.
 - `.runner/context/history.md` — previous attempt summary (retry only).
-- `.runner/context/failure.md` — guard output (when guards failed).
+- `.runner/context/failure.md` — failure output from previous attempt (guards or runner errors).
 
 Iteration logs (append-only, gitignored):
 
 - `.runner/iterations/{run-id}/{iter-n}/output.json`
 - `.runner/iterations/{run-id}/{iter-n}/guard.log`
+- `.runner/iterations/{run-id}/{iter-n}/failure.log`
 - `.runner/iterations/{run-id}/{iter-n}/executor.log`
 - `.runner/iterations/{run-id}/{iter-n}/meta.json`
 - `.runner/iterations/{run-id}/{iter-n}/tree.before.json`

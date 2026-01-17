@@ -75,7 +75,7 @@ a recovery path instead of propagating the error immediately:
 
 Recovery behavior:
 
-1. Error message written to `guard.log` (provides failure context for next iteration)
+1. Error message written to `failure.log` (provides failure context for next iteration)
 2. Tree persisted with updated attempts (ensures next step sees correct count)
 3. Iteration logged normally (meta.json, tree snapshots)
 4. Error propagated after persistence (step returns error, but state is consistent)

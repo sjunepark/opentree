@@ -31,13 +31,15 @@ The guard shares the iteration timeout budget with the executor — whatever tim
 | 0 | `Pass` | `passes = true` |
 | non-zero | `Fail` | `attempts += 1` |
 | timeout | `Fail` | logs "guard timed out" |
-| skipped | `Skipped` | `attempts += 1` |
+| skipped | `Skipped` | handled by status rules (retry increments attempts; decomposed doesn't) |
 
 ## Output Capture
 
+- stdout and stderr drained concurrently while the command runs (prevents pipe deadlocks)
 - stdout and stderr combined into single log
 - Written to `.runner/iterations/{run_id}/{iter}/guard.log`
 - Truncated if exceeds limit: preserves start, appends `[truncated N bytes]`
+- If per-stream buffers overflow, logs include `[stdout truncated N bytes]` / `[stderr truncated N bytes]`
 - Log format separates streams with `=== stdout ===` and `=== stderr ===` headers
 
 ## Source Files

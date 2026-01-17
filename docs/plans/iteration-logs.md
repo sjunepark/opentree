@@ -16,6 +16,7 @@ Iteration logs are the audit trail for debugging. Understanding their structure 
 ├── meta.json         ← timing, node id, outcome
 ├── output.json       ← agent's status + summary
 ├── guard.log         ← guard stdout/stderr (if ran)
+├── failure.log       ← failure output (if last_guard == fail)
 ├── executor.log      ← executor output (if ran)
 ├── tree.before.json  ← tree snapshot pre-iteration
 └── tree.after.json   ← tree snapshot post-iteration

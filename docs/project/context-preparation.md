@@ -13,7 +13,7 @@ These human-readable markdown files live in `.runner/context/` and are **cleared
 .runner/context/
 ├── goal.md      ← Always written (current task)
 ├── history.md   ← Previous attempt summary (if retry)
-└── failure.md   ← Guard output (if guards failed last time)
+└── failure.md   ← Failure output (if last attempt failed)
 ```
 
 ### What Gets Written
@@ -22,7 +22,7 @@ These human-readable markdown files live in `.runner/context/` and are **cleared
 |------|--------|----------------|
 | `goal.md` | Selected node's `title`, `goal`, `acceptance` | Always |
 | `history.md` | `run_state.last_summary` | Only when `last_status == Retry` |
-| `failure.md` | Previous iteration's `guard.log` | Only when `last_guard == Fail` |
+| `failure.md` | Previous iteration's `failure.log` (fallback: `guard.log`) | Only when `last_guard == Fail` |
 
 ### Example Files
 
@@ -48,10 +48,10 @@ Implemented login endpoint but tests fail due to missing
 bcrypt dependency. Need to add bcrypt to Cargo.toml.
 ```
 
-**`failure.md` (after guard failure):**
+**`failure.md` (after failure):**
 
 ```markdown
-# Failure (guard output)
+# Failure (previous attempt)
 
 error[E0432]: unresolved import `bcrypt`
  --> src/auth.rs:3:5
@@ -109,7 +109,7 @@ If still over budget after dropping all droppable sections, the last section get
          ▼                   ▼                   ▼
    ┌───────────┐      ┌───────────┐      ┌──────────────┐
    │ goal.md   │      │history.md │      │ failure.md   │
-   │ (always)  │      │(if retry) │      │(if guard fail)│
+   │ (always)  │      │(if retry) │      │(if last fail) │
    └─────┬─────┘      └─────┬─────┘      └──────┬───────┘
          │                  │                   │
          └──────────────────┼───────────────────┘
