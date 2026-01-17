@@ -57,7 +57,7 @@ Agent responsibilities:
 - Output structured JSON with `status` (`done`/`retry`/`decomposed`) and `summary`.
 - If `decomposed`: must add children to the selected node in the tree.
 - If `done` or `retry`: must not add children to the selected node.
-- Record uncertainty in `.runner/context/` docs (assumptions, open questions).
+- Record uncertainty in `.runner/state/assumptions.md` and `.runner/state/questions.md`.
 - Keep `.runner/state/tree.json` strictly valid when editing it.
 - Never mutate passed nodes; never set `passes=true` (runner-owned).
 - Always output a summary (explicit, not relying on autocompact).
@@ -69,8 +69,25 @@ Agent responsibilities:
 - `.runner/state/tree.json`: canonical task tree (strict JSON, canonicalized formatting on write).
 - `.runner/state/schema.json`: versioned schema for tree validation.
 - `.runner/state/config.json`: runner configuration (max_attempts defaults, guards, timeouts).
+- `.runner/state/run_state.json`: run/iteration bookkeeping (run-id, iter counter, last outcome).
+- `.runner/state/agent_output.schema.json`: JSON Schema for agent output.
+- `.runner/state/assumptions.md`: accumulated assumptions (agent may append).
+- `.runner/state/questions.md`: open questions for human review (agent may append).
+
+`run_state.json` format (minimal):
+
+```json
+{
+  "run_id": "string|null",
+  "next_iter": 1,
+  "last_status": "done|retry|decomposed|null",
+  "last_summary": "string|null",
+  "last_guard": "pass|fail|skipped|null"
+}
+```
 
 Agent may read `state/` but runner-owned fields (`passes`, `attempts`) are overwritten by runner.
+Agent may append to `assumptions.md` and `questions.md`; runner does not clear them per-iteration.
 
 ### 3.2 Ephemeral context (`context/`)
 
@@ -79,8 +96,7 @@ Runner clears and rewrites `context/` at each iteration start. Agent reads this 
 - `.runner/context/goal.md`: current node's goal + acceptance criteria.
 - `.runner/context/history.md`: summary from previous attempt (if retry).
 - `.runner/context/failure.md`: guard failure output from previous attempt (if guards failed).
-- `.runner/context/assumptions.md`: accumulated assumptions (agent may append).
-- `.runner/context/questions.md`: open questions for human review (agent may append).
+Assumptions and questions persist in `state/` and are not part of the ephemeral context.
 
 ### 3.3 Iteration logs (`iterations/`) — local-only, gitignored
 
@@ -88,6 +104,7 @@ Append-only immutable log of all iterations:
 
 - `.runner/iterations/{run-id}/{iter-n}/output.json`: agent's status + summary.
 - `.runner/iterations/{run-id}/{iter-n}/guard.log`: full guard output (if guards ran).
+- `.runner/iterations/{run-id}/{iter-n}/executor.log`: executor stdout/stderr (if executor ran).
 - `.runner/iterations/{run-id}/{iter-n}/meta.json`: timing, node id, mode, outcome.
 - `.runner/iterations/{run-id}/{iter-n}/tree.before.json`: tree snapshot before iteration.
 - `.runner/iterations/{run-id}/{iter-n}/tree.after.json`: tree snapshot after iteration.
@@ -288,7 +305,7 @@ Prompt pack (stable order, minimal but sufficient):
 4. `.runner/context/failure.md` (guard failure output, if previous guards failed).
 5. Selected leaf path + selected leaf subtree (full).
 6. Deterministic summary of the rest of the tree (bounded).
-7. `.runner/context/assumptions.md`, `.runner/context/questions.md`.
+7. `.runner/state/assumptions.md`, `.runner/state/questions.md`.
 8. Output contract: "You MUST write output.json with status and summary before session ends."
 
 ## 9) Git Policy (MVP)

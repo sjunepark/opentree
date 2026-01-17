@@ -27,7 +27,8 @@ pub struct AgentOutput {
 ///
 /// Guards are deterministic: a given command and inputs always yield the same
 /// outcome classification.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum GuardOutcome {
     /// Guards completed successfully.
     Pass,

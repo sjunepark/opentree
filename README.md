@@ -34,14 +34,41 @@ From a target project repo root:
 runner init
 runner validate
 runner select
+runner step
 ```
 
 Notes:
 
-- `runner init --force` overwrites `.runner/state/tree.json`, empties `.runner/*.md` placeholders, and rewrites the schema file.
+- `runner init --force` overwrites `.runner/GOAL.md`, runner-owned state files, and resets Markdown placeholders under `.runner/`.
 - `runner select` prints the selected leaf node id to stdout.
 
 ## File Contracts
 
+Runner-owned root docs:
+
+- `.runner/GOAL.md` — project-level goal/spec used to seed the root node.
+
+Runner-owned state (long-lived):
+
 - `.runner/state/tree.json` — canonical task tree (v1) written in stable order.
 - `.runner/state/schema.json` — JSON Schema for v1 task trees.
+- `.runner/state/config.json` — runner configuration (guards, defaults, limits).
+- `.runner/state/run_state.json` — run/iteration bookkeeping (runner-owned).
+- `.runner/state/assumptions.md` — accumulated assumptions (agent may append).
+- `.runner/state/questions.md` — open questions for human review (agent may append).
+- `.runner/state/agent_output.schema.json` — JSON Schema for agent output.
+
+Ephemeral context (rewritten each iteration):
+
+- `.runner/context/goal.md` — current node goal + acceptance criteria.
+- `.runner/context/history.md` — previous attempt summary (retry only).
+- `.runner/context/failure.md` — guard output (when guards failed).
+
+Iteration logs (append-only, gitignored):
+
+- `.runner/iterations/{run-id}/{iter-n}/output.json`
+- `.runner/iterations/{run-id}/{iter-n}/guard.log`
+- `.runner/iterations/{run-id}/{iter-n}/executor.log`
+- `.runner/iterations/{run-id}/{iter-n}/meta.json`
+- `.runner/iterations/{run-id}/{iter-n}/tree.before.json`
+- `.runner/iterations/{run-id}/{iter-n}/tree.after.json`

@@ -148,7 +148,7 @@ Invariants:
 
 - Status: accepted
 - Decision:
-  - `.runner/state/` — runner-owned canonical state (tree.json, schema.json, config).
+  - `.runner/state/` — runner-owned canonical state (tree.json, schema.json, config, assumptions, questions).
   - `.runner/context/` — ephemeral, cleared and rewritten each iteration by runner for agent consumption.
   - `.runner/iterations/` — append-only immutable log of all iterations.
 - Rationale: separates concerns; agents read context but don't manage it; runner controls what context
@@ -156,6 +156,7 @@ Invariants:
 - Consequences:
   - Runner clears `context/` at iteration start, writes goal/history/failure info.
   - Agent reads `context/` and `state/tree.json` (read-only for state semantics).
+  - Agent may append to `state/assumptions.md` and `state/questions.md`.
   - Agent writes `iterations/{id}/output.json` with status + summary.
-  - All formats are JSON for consistency.
+  - Machine state is JSON; human notes (context/assumptions/questions) are Markdown.
 - References: `ARCHITECTURE.md`
