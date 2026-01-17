@@ -120,6 +120,7 @@ pub fn run_step<E: Executor, G: GuardRunner>(
         .with_context(|| format!("create iteration dir {}", iter_dir.display()))?;
 
     let guard_log_path = iter_dir.join("guard.log");
+    let failure_log_path = iter_dir.join("failure.log");
     // Attempt counters must only move forward once we actually attempt an agent execution.
     let mut attempted_agent = false;
 
@@ -143,21 +144,23 @@ pub fn run_step<E: Executor, G: GuardRunner>(
         validate_post_exec_tree(&prev_tree, &next_tree)?;
         validate_status(&prev_tree, &next_tree, &selected_id, output.status)?;
 
-        let guard_timeout = if output.status == AgentStatus::Done {
-            remaining_budget(deadline)?
+        let guard_outcome = if output.status == AgentStatus::Done {
+            // Guards only run when the agent claims completion, and they receive the remaining
+            // budget from the per-iteration timeout.
+            let guard_timeout = remaining_budget(deadline)?;
+            run_guards_if_needed(
+                output.status,
+                guard_runner,
+                &GuardRequest {
+                    workdir: root.to_path_buf(),
+                    log_path: guard_log_path.clone(),
+                    timeout: guard_timeout,
+                    output_limit_bytes: cfg.guard_output_limit_bytes,
+                },
+            )?
         } else {
-            Duration::from_secs(0)
+            GuardOutcome::Skipped
         };
-        let guard_outcome = run_guards_if_needed(
-            output.status,
-            guard_runner,
-            &GuardRequest {
-                workdir: root.to_path_buf(),
-                log_path: guard_log_path.clone(),
-                timeout: guard_timeout,
-                output_limit_bytes: cfg.guard_output_limit_bytes,
-            },
-        )?;
 
         let mut updated_tree = next_tree.clone();
         apply_state_updates(
@@ -183,17 +186,27 @@ pub fn run_step<E: Executor, G: GuardRunner>(
             output = out;
             guard_outcome = guard;
             tree_after = tree;
+            if guard_outcome == GuardOutcome::Fail {
+                let contents = fs::read_to_string(&guard_log_path).unwrap_or_else(|err| {
+                    format!(
+                        "runner error: could not read {}: {err}",
+                        guard_log_path.display()
+                    )
+                });
+                fs::write(&failure_log_path, contents)
+                    .with_context(|| format!("write failure log {}", failure_log_path.display()))?;
+            }
         }
         Err(err) => {
             step_error = Some(err);
 
             let err_msg = format!("runner error: {}", step_error.as_ref().unwrap());
-            if let Some(parent) = guard_log_path.parent() {
+            if let Some(parent) = failure_log_path.parent() {
                 fs::create_dir_all(parent)
                     .with_context(|| format!("create {}", parent.display()))?;
             }
-            fs::write(&guard_log_path, format!("{err_msg}\n"))
-                .with_context(|| format!("write {}", guard_log_path.display()))?;
+            fs::write(&failure_log_path, format!("{err_msg}\n"))
+                .with_context(|| format!("write {}", failure_log_path.display()))?;
 
             output = AgentOutput {
                 status: AgentStatus::Retry,
@@ -209,11 +222,7 @@ pub fn run_step<E: Executor, G: GuardRunner>(
         }
     }
 
-    let guard_log = if guard_outcome == GuardOutcome::Pass || guard_outcome == GuardOutcome::Fail {
-        fs::read_to_string(&guard_log_path).ok()
-    } else {
-        None
-    };
+    let guard_log = fs::read_to_string(&guard_log_path).ok();
     let meta = IterationMeta {
         run_id: run_id.clone(),
         iter,
@@ -450,6 +459,16 @@ fn failure_from_run_state(
     if prev_iter == 0 {
         return None;
     }
+    let failure_log = root
+        .join(".runner")
+        .join("iterations")
+        .join(run_id)
+        .join(prev_iter.to_string())
+        .join("failure.log");
+    if let Ok(contents) = fs::read_to_string(&failure_log) {
+        return Some(contents);
+    }
+
     let guard_log = root
         .join(".runner")
         .join("iterations")
@@ -633,6 +652,63 @@ mod tests {
             .join(outcome.iter.to_string());
         assert!(iter_dir.join("meta.json").exists());
         assert!(iter_dir.join("output.json").exists());
+    }
+
+    /// Verifies guard failure produces a failure log and that the next iteration includes it in
+    /// context.
+    #[test]
+    fn step_replays_failure_context_after_guard_fail() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let root = temp.path();
+        init_git_repo(root);
+        start_run(root).expect("start");
+
+        let executor1 = FakeExecutor {
+            output: AgentOutput {
+                status: AgentStatus::Done,
+                summary: "done".to_string(),
+            },
+            tree_update: None,
+        };
+        let guard_runner_fail = FakeGuardRunner {
+            outcome: GuardOutcome::Fail,
+        };
+
+        let outcome1 =
+            run_step(root, &executor1, &guard_runner_fail, &StepConfig::default()).expect("step1");
+        assert_eq!(outcome1.guard, GuardOutcome::Fail);
+
+        let iter1_dir = root
+            .join(".runner/iterations")
+            .join(&outcome1.run_id)
+            .join(outcome1.iter.to_string());
+        assert!(iter1_dir.join("guard.log").exists());
+        let failure_log = iter1_dir.join("failure.log");
+        assert!(failure_log.exists());
+        let failure_contents = fs::read_to_string(&failure_log).expect("read failure.log");
+        assert!(failure_contents.contains("guard output"));
+
+        let executor2 = FakeExecutor {
+            output: AgentOutput {
+                status: AgentStatus::Retry,
+                summary: "retry".to_string(),
+            },
+            tree_update: None,
+        };
+        let guard_runner_unused = FakeGuardRunner {
+            outcome: GuardOutcome::Pass,
+        };
+        run_step(
+            root,
+            &executor2,
+            &guard_runner_unused,
+            &StepConfig::default(),
+        )
+        .expect("step2");
+
+        let failure_md = fs::read_to_string(root.join(".runner/context/failure.md"))
+            .expect("read .runner/context/failure.md");
+        assert!(failure_md.contains("guard output"));
     }
 
     /// Verifies decomposition adds children to the tree and skips guards.

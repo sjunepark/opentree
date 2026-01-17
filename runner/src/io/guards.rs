@@ -1,14 +1,14 @@
 //! Guard runner adapter for `just ci`.
 
-use std::fs;
-use std::path::PathBuf;
-use std::process::{Command, Stdio};
 use std::time::Duration;
 
 use anyhow::{Context, Result};
-use wait_timeout::ChildExt;
+use std::fs;
+use std::path::PathBuf;
+use std::process::Command;
 
 use crate::core::types::{AgentStatus, GuardOutcome};
+use crate::io::process::{CommandOutput, run_command_with_timeout};
 
 /// Default timeout for guard execution (30 minutes).
 pub const DEFAULT_GUARD_TIMEOUT: Duration = Duration::from_secs(30 * 60);
@@ -54,41 +54,20 @@ impl GuardRunner for CommandGuardRunner {
             .ok_or_else(|| anyhow::anyhow!("guard command is empty"))?;
         let args = self.command.get(1..).unwrap_or(&[]);
 
-        let mut child = Command::new(program)
-            .args(args)
+        let mut cmd = Command::new(program);
+        cmd.args(args)
             .current_dir(&request.workdir)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .with_context(|| format!("spawn guard command: {}", self.command.join(" ")))?;
+            .stdin(std::process::Stdio::null());
 
-        let status = match child
-            .wait_timeout(request.timeout)
-            .context("wait for guard timeout")?
-        {
-            Some(status) => status,
-            None => {
-                child.kill().context("kill guard process")?;
-                child.wait().context("wait guard process")?;
-                write_guard_log(
-                    &request.log_path,
-                    b"",
-                    b"guard timed out",
-                    request.output_limit_bytes,
-                )?;
-                return Ok(GuardOutcome::Fail);
-            }
-        };
+        let output =
+            run_command_with_timeout(cmd, None, request.timeout, request.output_limit_bytes)
+                .with_context(|| format!("run guard command: {}", self.command.join(" ")))?;
+        write_guard_log(&request.log_path, &output, request.output_limit_bytes)?;
 
-        let output = child.wait_with_output().context("collect guard output")?;
-        write_guard_log(
-            &request.log_path,
-            &output.stdout,
-            &output.stderr,
-            request.output_limit_bytes,
-        )?;
-
-        if status.success() {
+        if output.timed_out {
+            return Ok(GuardOutcome::Fail);
+        }
+        if output.status.success() {
             Ok(GuardOutcome::Pass)
         } else {
             Ok(GuardOutcome::Fail)
@@ -108,21 +87,21 @@ pub fn run_guards_if_needed<R: GuardRunner>(
     runner.run(request)
 }
 
-fn write_guard_log(
-    path: &PathBuf,
-    stdout: &[u8],
-    stderr: &[u8],
-    output_limit: usize,
-) -> Result<()> {
+fn write_guard_log(path: &PathBuf, output: &CommandOutput, output_limit: usize) -> Result<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)
             .with_context(|| format!("create guard log dir {}", parent.display()))?;
     }
     let mut buf = String::new();
     buf.push_str("=== stdout ===\n");
-    buf.push_str(&String::from_utf8_lossy(stdout));
+    buf.push_str(&String::from_utf8_lossy(&output.stdout));
+    buf.push_str(&output.stdout_truncated_notice("guard"));
     buf.push_str("\n=== stderr ===\n");
-    buf.push_str(&String::from_utf8_lossy(stderr));
+    buf.push_str(&String::from_utf8_lossy(&output.stderr));
+    buf.push_str(&output.stderr_truncated_notice("guard"));
+    if output.timed_out {
+        buf.push_str("\n[guard timed out]\n");
+    }
 
     if buf.len() > output_limit {
         let truncated = format!(
@@ -142,6 +121,7 @@ fn write_guard_log(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Duration;
 
     struct FakeGuardRunner {
         outcome: GuardOutcome,

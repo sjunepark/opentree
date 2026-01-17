@@ -1,15 +1,14 @@
 //! Executor interface and Codex backend.
 
-use std::fs;
-use std::io::Write;
-use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
 use std::time::Duration;
 
 use anyhow::{Context, Result, anyhow};
-use wait_timeout::ChildExt;
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::process::Command;
 
 use crate::core::types::AgentOutput;
+use crate::io::process::{CommandOutput, run_command_with_timeout};
 
 /// Parameters for an executor invocation.
 #[derive(Debug, Clone)]
@@ -59,47 +58,30 @@ impl Executor for CodexExecutor {
             .arg(&request.output_path)
             .arg("-")
             .current_dir(&request.workdir)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
+            .stdin(std::process::Stdio::piped());
 
-        let mut child = cmd.spawn().context("spawn codex exec")?;
-        if let Some(stdin) = child.stdin.as_mut() {
-            stdin
-                .write_all(request.prompt.as_bytes())
-                .context("write prompt to codex stdin")?;
-        }
+        let output = run_command_with_timeout(
+            cmd,
+            Some(request.prompt.as_bytes()),
+            request.timeout,
+            request.output_limit_bytes,
+        )
+        .context("run codex exec")?;
 
-        let status = match child
-            .wait_timeout(request.timeout)
-            .context("wait for executor timeout")?
-        {
-            Some(status) => status,
-            None => {
-                child.kill().context("kill executor process")?;
-                child.wait().context("wait executor process")?;
-                write_executor_log(
-                    &request.executor_log_path,
-                    b"",
-                    b"executor timed out",
-                    request.output_limit_bytes,
-                )?;
-                return Err(anyhow!("codex exec timed out after {:?}", request.timeout));
-            }
-        };
-
-        let output = child
-            .wait_with_output()
-            .context("collect executor output")?;
         write_executor_log(
             &request.executor_log_path,
-            &output.stdout,
-            &output.stderr,
+            &output,
             request.output_limit_bytes,
         )?;
 
-        if !status.success() {
-            return Err(anyhow!("codex exec failed with status {:?}", status.code()));
+        if output.timed_out {
+            return Err(anyhow!("codex exec timed out after {:?}", request.timeout));
+        }
+        if !output.status.success() {
+            return Err(anyhow!(
+                "codex exec failed with status {:?}",
+                output.status.code()
+            ));
         }
 
         Ok(())
@@ -128,21 +110,21 @@ fn read_agent_output(path: &Path) -> Result<AgentOutput> {
     Ok(output)
 }
 
-fn write_executor_log(
-    path: &Path,
-    stdout: &[u8],
-    stderr: &[u8],
-    output_limit: usize,
-) -> Result<()> {
+fn write_executor_log(path: &Path, output: &CommandOutput, output_limit: usize) -> Result<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)
             .with_context(|| format!("create executor log dir {}", parent.display()))?;
     }
     let mut buf = String::new();
     buf.push_str("=== stdout ===\n");
-    buf.push_str(&String::from_utf8_lossy(stdout));
+    buf.push_str(&String::from_utf8_lossy(&output.stdout));
+    buf.push_str(&output.stdout_truncated_notice("executor"));
     buf.push_str("\n=== stderr ===\n");
-    buf.push_str(&String::from_utf8_lossy(stderr));
+    buf.push_str(&String::from_utf8_lossy(&output.stderr));
+    buf.push_str(&output.stderr_truncated_notice("executor"));
+    if output.timed_out {
+        buf.push_str("\n[executor timed out]\n");
+    }
 
     if buf.len() > output_limit {
         let truncated = format!(
