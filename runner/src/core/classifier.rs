@@ -47,7 +47,7 @@ mod tests {
     fn classify_only_runner_paths_is_decompose() {
         let paths = vec![
             PathBuf::from(".runner/GOAL.md"),
-            PathBuf::from("./.runner/tree.json"),
+            PathBuf::from("./.runner/state/tree.json"),
         ];
         assert_eq!(classify_changed_paths(&paths), Mode::Decompose);
     }

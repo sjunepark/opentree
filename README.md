@@ -38,10 +38,10 @@ runner select
 
 Notes:
 
-- `runner init --force` overwrites `.runner/tree.json`, empties `.runner/*.md` placeholders, and rewrites the schema file.
+- `runner init --force` overwrites `.runner/state/tree.json`, empties `.runner/*.md` placeholders, and rewrites the schema file.
 - `runner select` prints the selected leaf node id to stdout.
 
 ## File Contracts
 
-- `.runner/tree.json` — canonical task tree (v1) written in stable order.
-- `schemas/task_tree/v1.schema.json` — JSON Schema for v1 task trees.
+- `.runner/state/tree.json` — canonical task tree (v1) written in stable order.
+- `.runner/state/schema.json` — JSON Schema for v1 task trees.

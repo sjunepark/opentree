@@ -1,6 +1,6 @@
 //! Goal-driven agent loop runner.
 //!
-//! Manages a task tree (`.runner/tree.json`) that tracks hierarchical goals.
+//! Manages a task tree (`.runner/state/tree.json`) that tracks hierarchical goals.
 //! The runner selects the leftmost open leaf for execution, enabling
 //! deterministic, resumable agent loops.
 
@@ -22,6 +22,10 @@ use tree::{Node, default_tree};
 
 const V1_SCHEMA: &str = include_str!("../../schemas/task_tree/v1.schema.json");
 const EMPTY_DOC: &str = "";
+const TREE_PATH: &str = ".runner/state/tree.json";
+const SCHEMA_PATH: &str = ".runner/state/schema.json";
+const CONFIG_PATH: &str = ".runner/state/config.json";
+const LEGACY_TREE_PATH: &str = ".runner/tree.json";
 
 #[derive(Parser)]
 #[command(
@@ -36,7 +40,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Create `.runner/tree.json` and schema files if missing.
+    /// Create `.runner/state/` and `.runner/context/` scaffolding if missing.
     Init {
         /// Overwrite existing files.
         #[arg(short, long)]
@@ -65,44 +69,60 @@ fn run() -> Result<()> {
 }
 
 fn cmd_init(force: bool) -> Result<()> {
-    let tree_path = Path::new(".runner/tree.json");
-    let schema_path = Path::new("schemas/task_tree/v1.schema.json");
+    let tree_path = Path::new(TREE_PATH);
+    let schema_path = Path::new(SCHEMA_PATH);
+    let config_path = Path::new(CONFIG_PATH);
+    let legacy_tree_path = Path::new(LEGACY_TREE_PATH);
 
-    fs::create_dir_all(".runner").context("create .runner directory")?;
-    fs::create_dir_all("schemas/task_tree").context("create schema directory")?;
+    fs::create_dir_all(".runner/state").context("create .runner/state directory")?;
+    fs::create_dir_all(".runner/context").context("create .runner/context directory")?;
+    fs::create_dir_all(".runner/iterations").context("create .runner/iterations directory")?;
 
-    write_if_missing_or_force(Path::new(".runner/ASSUMPTIONS.md"), EMPTY_DOC, force)?;
-    write_if_missing_or_force(Path::new(".runner/FEEDBACK_LOG.md"), EMPTY_DOC, force)?;
-    write_if_missing_or_force(Path::new(".runner/GLOSSARY.md"), EMPTY_DOC, force)?;
     write_if_missing_or_force(Path::new(".runner/GOAL.md"), EMPTY_DOC, force)?;
-    write_if_missing_or_force(Path::new(".runner/HUMAN_QUESTIONS.md"), EMPTY_DOC, force)?;
-    write_if_missing_or_force(Path::new(".runner/IMPROVEMENTS.md"), EMPTY_DOC, force)?;
+    write_if_missing_or_force(
+        Path::new(".runner/context/assumptions.md"),
+        EMPTY_DOC,
+        force,
+    )?;
+    write_if_missing_or_force(Path::new(".runner/context/questions.md"), EMPTY_DOC, force)?;
 
     if force || !schema_path.exists() {
-        fs::write(schema_path, V1_SCHEMA).context("write v1 schema")?;
+        fs::write(schema_path, V1_SCHEMA).context("write schema")?;
+    }
+
+    write_if_missing_or_force(config_path, "{}\n", force)?;
+
+    if !force && !tree_path.exists() && legacy_tree_path.exists() {
+        fs::rename(legacy_tree_path, tree_path).with_context(|| {
+            format!(
+                "migrate legacy tree {} -> {}",
+                legacy_tree_path.display(),
+                tree_path.display()
+            )
+        })?;
     }
 
     if force || !tree_path.exists() {
         let mut tree = default_tree();
         tree.sort_children();
-        write_json(tree_path, &tree).context("write .runner/tree.json")?;
+        write_json(tree_path, &tree).with_context(|| format!("write {}", tree_path.display()))?;
     }
 
     Ok(())
 }
 
 fn cmd_validate() -> Result<()> {
-    let tree_raw = fs::read_to_string(".runner/tree.json").context("read .runner/tree.json")?;
+    let tree_raw = fs::read_to_string(TREE_PATH).with_context(|| format!("read {}", TREE_PATH))?;
     let schema_raw =
-        fs::read_to_string("schemas/task_tree/v1.schema.json").context("read v1 schema")?;
+        fs::read_to_string(SCHEMA_PATH).with_context(|| format!("read {}", SCHEMA_PATH))?;
     validate_tree(&tree_raw, &schema_raw)?;
     Ok(())
 }
 
 fn cmd_select() -> Result<()> {
-    let tree_raw = fs::read_to_string(".runner/tree.json").context("read .runner/tree.json")?;
+    let tree_raw = fs::read_to_string(TREE_PATH).with_context(|| format!("read {}", TREE_PATH))?;
     let schema_raw =
-        fs::read_to_string("schemas/task_tree/v1.schema.json").context("read v1 schema")?;
+        fs::read_to_string(SCHEMA_PATH).with_context(|| format!("read {}", SCHEMA_PATH))?;
     let tree = validate_tree(&tree_raw, &schema_raw)?;
     let selected =
         leftmost_open_leaf(&tree).context("no open leaf: all leaves have passes=true")?;

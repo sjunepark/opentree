@@ -4,17 +4,16 @@
 
 - Completed `.plan/3` runner core-first work (classifier + immutability + state updates).
 - Documented agent-declared status model in DECISIONS.md, ARCHITECTURE.md, VISION.md.
+- Migrated runner CLI paths to `.runner/state/` + `.runner/context/` (init/validate/select + README/.gitignore).
+- Added agent-declared output types (`AgentStatus`, `AgentOutput`) + status invariant validator.
+- Updated runner-owned state updater to use `AgentStatus` (`retry` increments attempts; `done` + guards mark pass).
 
 ## Next
 
 Refactor for agent-declared status model:
 
-1. **Directory structure** — migrate `.runner/tree.json` → `.runner/state/tree.json`, add `context/`
-2. **Agent output types** — add `AgentStatus` enum (`Done`/`Retry`/`Decomposed`), `AgentOutput` struct
-3. **Status validator** — validate decomposed→children added, done/retry→no children
-4. **Context writer** — clear and write `context/` each iteration (goal, history, failure)
-5. **Update state_update.rs** — integrate agent status into transition logic
-6. **Update core loop** — read agent output, validate status, conditional guard execution
+1. **Context writer** — clear and write `context/` each iteration (goal, history, failure)
+2. **Core loop** — read agent output, validate status, conditional guard execution
 
 Research:
 

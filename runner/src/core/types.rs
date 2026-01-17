@@ -5,6 +5,24 @@
 
 #![allow(dead_code)]
 
+use serde::{Deserialize, Serialize};
+
+/// Agent-declared status for the selected node.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AgentStatus {
+    Done,
+    Retry,
+    Decomposed,
+}
+
+/// Structured output produced by an agent session.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AgentOutput {
+    pub status: AgentStatus,
+    pub summary: String,
+}
+
 /// Iteration classification derived from changed paths.
 ///
 /// The runner must classify deterministically: the same list of paths always
@@ -37,8 +55,8 @@ pub enum GuardOutcome {
 /// keep serialized outputs stable.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StateUpdateSummary {
-    /// Mode that drove the update rules for this step.
-    pub mode: Mode,
+    /// Agent-declared status that drove the update rules for this step.
+    pub status: AgentStatus,
     /// Guard outcome associated with this step.
     pub guard_outcome: GuardOutcome,
     /// Node ids that were marked `passes=true` by the runner.

@@ -2,7 +2,7 @@
 
 #![allow(dead_code)]
 
-use crate::core::types::{GuardOutcome, Mode, StateUpdateSummary};
+use crate::core::types::{AgentStatus, GuardOutcome, StateUpdateSummary};
 use crate::tree::Node;
 use std::collections::HashMap;
 
@@ -14,7 +14,7 @@ pub fn apply_state_updates(
     prev: &Node,
     next: &mut Node,
     selected_id: &str,
-    mode: Mode,
+    status: AgentStatus,
     guard: GuardOutcome,
 ) -> Result<StateUpdateSummary, String> {
     let prev_state = index_runner_owned(prev);
@@ -24,15 +24,15 @@ pub fn apply_state_updates(
         .ok_or_else(|| format!("selected node '{}' not found", selected_id))?;
 
     let mut summary = StateUpdateSummary {
-        mode,
+        status,
         guard_outcome: guard,
         passes_set: Vec::new(),
         attempts_incremented: Vec::new(),
         derived_passes_set: Vec::new(),
     };
 
-    if mode == Mode::Execute {
-        match guard {
+    match status {
+        AgentStatus::Done => match guard {
             GuardOutcome::Pass => {
                 if !selected.passes {
                     selected.passes = true;
@@ -47,7 +47,15 @@ pub fn apply_state_updates(
                 }
             }
             GuardOutcome::Skipped => {}
+        },
+        AgentStatus::Retry => {
+            let before = selected.attempts;
+            if before < selected.max_attempts {
+                selected.attempts = before + 1;
+                summary.attempts_incremented.push(selected.id.clone());
+            }
         }
+        AgentStatus::Decomposed => {}
     }
 
     derive_internal_passes(next, &mut summary);
@@ -138,7 +146,7 @@ mod tests {
             &prev,
             &mut next,
             "a",
-            Mode::Decompose,
+            AgentStatus::Decomposed,
             GuardOutcome::Skipped,
         )
         .expect("state update");
@@ -155,8 +163,9 @@ mod tests {
         prev.passes = false;
         let mut next = prev.clone();
 
-        let summary = apply_state_updates(&prev, &mut next, "a", Mode::Execute, GuardOutcome::Pass)
-            .expect("state update");
+        let summary =
+            apply_state_updates(&prev, &mut next, "a", AgentStatus::Done, GuardOutcome::Pass)
+                .expect("state update");
 
         assert!(next.children[0].passes);
         assert!(next.passes);
@@ -171,8 +180,9 @@ mod tests {
         prev.children[0].max_attempts = 2;
         let mut next = prev.clone();
 
-        let summary = apply_state_updates(&prev, &mut next, "a", Mode::Execute, GuardOutcome::Fail)
-            .expect("state update");
+        let summary =
+            apply_state_updates(&prev, &mut next, "a", AgentStatus::Done, GuardOutcome::Fail)
+                .expect("state update");
 
         assert_eq!(next.children[0].attempts, 2);
         assert_eq!(summary.attempts_incremented, vec!["a".to_string()]);
@@ -185,8 +195,9 @@ mod tests {
         prev.children[0].max_attempts = 2;
         let mut next = prev.clone();
 
-        let summary = apply_state_updates(&prev, &mut next, "a", Mode::Execute, GuardOutcome::Fail)
-            .expect("state update");
+        let summary =
+            apply_state_updates(&prev, &mut next, "a", AgentStatus::Done, GuardOutcome::Fail)
+                .expect("state update");
 
         assert_eq!(next.children[0].attempts, 2);
         assert!(summary.attempts_incremented.is_empty());
@@ -200,7 +211,7 @@ mod tests {
             &prev,
             &mut next,
             "missing",
-            Mode::Decompose,
+            AgentStatus::Decomposed,
             GuardOutcome::Skipped,
         )
         .expect_err("expected error");
@@ -219,7 +230,7 @@ mod tests {
             &prev,
             &mut next,
             "a",
-            Mode::Decompose,
+            AgentStatus::Decomposed,
             GuardOutcome::Skipped,
         )
         .expect("state update");
@@ -238,7 +249,7 @@ mod tests {
             &prev,
             &mut next,
             "a",
-            Mode::Decompose,
+            AgentStatus::Decomposed,
             GuardOutcome::Skipped,
         )
         .expect("state update");
@@ -260,8 +271,9 @@ mod tests {
         let mut next = prev.clone();
         next.children.push(node("new", 2));
 
-        let summary = apply_state_updates(&prev, &mut next, "a", Mode::Execute, GuardOutcome::Pass)
-            .expect("state update");
+        let summary =
+            apply_state_updates(&prev, &mut next, "a", AgentStatus::Done, GuardOutcome::Pass)
+                .expect("state update");
 
         let group = &next.children[0];
         assert!(group.children[0].passes);
@@ -269,5 +281,45 @@ mod tests {
         assert!(!next.passes);
         assert!(summary.passes_set.contains(&"a".to_string()));
         assert!(summary.derived_passes_set.contains(&"group".to_string()));
+    }
+
+    #[test]
+    fn apply_state_updates_increments_attempts_on_retry() {
+        let mut prev = node_with_children("root", 0, vec![leaf("a", 0, false)]);
+        prev.children[0].attempts = 1;
+        prev.children[0].max_attempts = 3;
+        let mut next = prev.clone();
+
+        let summary = apply_state_updates(
+            &prev,
+            &mut next,
+            "a",
+            AgentStatus::Retry,
+            GuardOutcome::Skipped,
+        )
+        .expect("state update");
+
+        assert_eq!(next.children[0].attempts, 2);
+        assert_eq!(summary.attempts_incremented, vec!["a".to_string()]);
+    }
+
+    #[test]
+    fn apply_state_updates_retry_saturates_attempts_at_max() {
+        let mut prev = node_with_children("root", 0, vec![leaf("a", 0, false)]);
+        prev.children[0].attempts = 2;
+        prev.children[0].max_attempts = 2;
+        let mut next = prev.clone();
+
+        let summary = apply_state_updates(
+            &prev,
+            &mut next,
+            "a",
+            AgentStatus::Retry,
+            GuardOutcome::Skipped,
+        )
+        .expect("state update");
+
+        assert_eq!(next.children[0].attempts, 2);
+        assert!(summary.attempts_incremented.is_empty());
     }
 }
