@@ -3,13 +3,13 @@
 ## Now
 
 - Completed `.plan/4` (`runner step` one full iteration, context/prompt/executor/guards/run state/logging).
-- Added runner init scaffolding for state/context/iterations and new run state + prompt builder adapters.
-- Added step orchestration tests for `done`/`retry`/`decomposed`.
+- Implemented `runner start` (auto run-id, `runner/<run-id>` branch checkout, bootstrap commit).
+- Enforced git policy + deterministic per-iteration commits in `runner step`.
 
 ## Next
 
-- Resolve run-id strategy (deterministic input vs generated at run start).
-- Decide next plan milestone after `runner step` stabilization.
+- Add missing MVP commands (`runner validate`, `runner select`) or keep CLI intentionally minimal.
+- Add executor timeouts/output caps (shared per-iteration budget) and improve failure commits.
 
 ## Notes
 

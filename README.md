@@ -31,22 +31,22 @@ cargo install --path runner
 From a target project repo root:
 
 ```bash
-runner init
-runner validate
-runner select
+runner start
 runner step
 ```
 
 Notes:
 
-- `runner init --force` overwrites `.runner/GOAL.md`, runner-owned state files, and resets Markdown placeholders under `.runner/`.
-- `runner select` prints the selected leaf node id to stdout.
+- `runner start` creates/checks out `runner/<run-id>`, writes `id: <run-id>` into `.runner/GOAL.md`, and commits bootstrap changes.
+- `runner step` refuses to run without `runner start` (missing `run_id`).
+- `runner init --force` overwrites runner-owned `.runner/` artifacts (including `.runner/GOAL.md`).
 
 ## File Contracts
 
 Runner-owned root docs:
 
-- `.runner/GOAL.md` — project-level goal/spec used to seed the root node.
+- `.runner/GOAL.md` — project-level goal/spec used to seed the root node (YAML frontmatter includes `id`).
+- `.runner/.gitignore` — ignores runner-ephemeral dirs (`context/`, `iterations/`).
 
 Runner-owned state (long-lived):
 
