@@ -19,7 +19,7 @@ The decision happens in `run_guards_if_needed` (`runner/src/io/guards.rs:85-94`)
 | Parameter | Default | Source |
 |-----------|---------|--------|
 | Timeout | 30 min (shared with executor) | `iteration_timeout_secs` in config |
-| Output cap | 1 MB | `guard_output_limit_bytes` in config |
+| Output cap | 100 KB | `guard_output_limit_bytes` in config |
 | Command | `just ci` | `guard.command` in config |
 
 The guard shares the iteration timeout budget with the executor — whatever time remains after agent execution becomes the guard timeout.

@@ -48,8 +48,8 @@ impl Default for RunnerConfig {
         Self {
             max_attempts_default: 3,
             iteration_timeout_secs: 30 * 60,
-            executor_output_limit_bytes: 1_000_000,
-            guard_output_limit_bytes: 1_000_000,
+            executor_output_limit_bytes: 100_000,
+            guard_output_limit_bytes: 100_000,
             guard: GuardConfig::default(),
         }
     }

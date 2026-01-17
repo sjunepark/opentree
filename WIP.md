@@ -15,7 +15,7 @@
 - Add missing MVP commands:
   - `runner validate`:
     - Validate `.runner/` layout + required files.
-    - Load + validate `.runner/state/config.toml` (legacy `.runner/state/config.json` fallback).
+    - Load + validate `.runner/state/config.toml`.
     - Validate `.runner/state/tree.json` against schema + semantic invariants (no duplicate ids, attempts bounds, sorted children).
     - Validate run identity when present: `GOAL.md id == run_state.run_id == current branch runner/<id>`.
   - `runner select`:
