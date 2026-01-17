@@ -1,16 +1,13 @@
 # WIP
 
-## Roadmap
+## Now
 
-- Next: implement `runner step` (one deterministic iteration end-to-end).
-- Enforce runner policies: git safety (clean branch + refuse `main`/`master`), deterministic commits, local iteration logs.
-- Add guard runner + state updates: run `just ci`, set `passes=true` on green, increment attempts / derive internal passes.
-- Implement prompt pack builder + executor backends (Codex CLI / Claude CLI).
-- Add extensibility sidecars + UX polish (events, output caps/defaults, `runner run` for multi-step looping).
+- Executing `.plan/3` runner core-first work (classifier + immutability + state updates).
 
-## Current status
+## Next
 
-- Phase: MVP foundations (tree schema + CLI scaffolding).
-- Implemented: v1 task tree schema, canonical JSON writing, invariant checks, deterministic leaf selection.
-- Commands: `runner init|validate|select` (init creates `.runner/` placeholders + schema/tree).
-- Guards: `just ci` runs Rust `fmt --check`, `clippy`, `test` + `rumdl check`.
+- Execute `.plan/3/a/iii.md`.
+
+## Notes
+
+- Plan CLI needs `pyyaml` when run via `uv run --with pyyaml`.
