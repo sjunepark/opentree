@@ -70,7 +70,7 @@ a recovery path instead of propagating the error immediately:
 |-----------|----------|-----------------|------------|
 | Executor timeout | Retry | Skipped | unchanged |
 | Output parse error | Retry | Skipped | unchanged |
-| Guard timeout | Retry | Skipped | unchanged |
+| Guard spawn/I/O error | Retry | Skipped | unchanged |
 | Other runner error | Retry | Skipped | unchanged |
 
 Recovery behavior:
