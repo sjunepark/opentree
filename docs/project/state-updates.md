@@ -75,7 +75,7 @@ a recovery path instead of propagating the error immediately:
 
 Recovery behavior:
 
-1. Error message written to `failure.log` (provides failure context for next iteration)
+1. Error message written to `runner_error.log` under the iteration directory (for human debugging)
 2. Tree persisted with updated attempts (ensures next step sees correct count)
 3. Iteration logged normally (meta.json, tree snapshots)
 4. Error propagated after persistence (step returns error, but state is consistent)
@@ -83,6 +83,9 @@ Recovery behavior:
 The `attempted_agent` flag tracks whether agent execution was actually started.
 Attempts only increment when true—pre-execution failures (e.g., config load error)
 don't consume retry budget.
+
+Runner-internal errors are not fed back to the node agent via `.runner/context/history.md` or
+`.runner/context/failure.md`.
 
 Code: `runner/src/step.rs` recovery block (lines 165-200)
 

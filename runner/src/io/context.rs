@@ -49,7 +49,7 @@ pub fn write_context(root: &Path, payload: &ContextPayload) -> Result<ContextPat
     )?;
     write_file(
         &paths.failure_path,
-        &render_optional("Failure (previous attempt)", payload.failure.as_deref()),
+        &render_optional("Failure (guard output)", payload.failure.as_deref()),
     )?;
 
     Ok(paths)

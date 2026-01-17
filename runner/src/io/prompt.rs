@@ -80,7 +80,7 @@ impl PromptBuilder {
             ),
             PromptSection::droppable(
                 "failure",
-                "Failure (previous attempt)",
+                "Failure (guard output)",
                 input.context_failure.as_deref().unwrap_or("").trim(),
             ),
             PromptSection::required(

@@ -95,7 +95,7 @@ Runner clears and rewrites `context/` at each iteration start. Agent reads this 
 
 - `.runner/context/goal.md`: current node's goal + acceptance criteria.
 - `.runner/context/history.md`: summary from previous attempt (if retry).
-- `.runner/context/failure.md`: failure output from previous attempt (guards or runner errors).
+- `.runner/context/failure.md`: guard failure output from previous attempt (if guards failed).
 
 Assumptions and questions persist in `state/` and are not part of the ephemeral context.
 
@@ -105,7 +105,6 @@ Append-only immutable log of all iterations:
 
 - `.runner/iterations/{run-id}/{iter-n}/output.json`: agent's status + summary.
 - `.runner/iterations/{run-id}/{iter-n}/guard.log`: full guard output (if guards ran).
-- `.runner/iterations/{run-id}/{iter-n}/failure.log`: failure output used for next iteration context (guard failures or runner errors).
 - `.runner/iterations/{run-id}/{iter-n}/executor.log`: executor stdout/stderr (if executor ran).
 - `.runner/iterations/{run-id}/{iter-n}/meta.json`: timing, node id, mode, outcome.
 - `.runner/iterations/{run-id}/{iter-n}/tree.before.json`: tree snapshot before iteration.
@@ -189,7 +188,7 @@ Each `step` is one deterministic iteration:
    - clear previous contents
    - write `goal.md` with selected node's goal + acceptance
    - write `history.md` with previous attempt summary (if retry)
-   - write `failure.md` with previous failure output (if last iteration failed)
+   - write `failure.md` with guard output (if previous guards failed)
 5. Build a stable prompt pack.
 6. Invoke the executor (fresh agent session) with a 30-minute wall clock budget.
 7. Read agent output from `iterations/{id}/output.json` (status + summary).
@@ -207,7 +206,7 @@ Each `step` is one deterministic iteration:
     - derive internal node passes
 12. Persist:
     - write tree atomically (canonical form)
-    - write iteration logs (output.json, guard.log, failure.log, meta.json, tree snapshots)
+    - write iteration logs (output.json, guard.log, meta.json, tree snapshots)
     - commit the iteration
 13. Stop when `root.passes == true` (no open leaves remain) or `attempts == max_attempts` (stuck).
 
@@ -443,7 +442,7 @@ Prompt pack (stable order, minimal but sufficient):
 1. Runner contract / invariants (especially: immutability, runner-owned fields, status requirements).
 2. `.runner/context/goal.md` (current node).
 3. `.runner/context/history.md` (previous attempt summary, if retry).
-4. `.runner/context/failure.md` (previous failure output, if last iteration failed).
+4. `.runner/context/failure.md` (guard failure output, if previous guards failed).
 5. Selected leaf path + selected leaf subtree (full).
 6. Deterministic summary of the rest of the tree (bounded).
 7. `.runner/state/assumptions.md`, `.runner/state/questions.md`.

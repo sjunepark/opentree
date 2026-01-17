@@ -120,7 +120,7 @@ pub fn run_step<E: Executor, G: GuardRunner>(
         .with_context(|| format!("create iteration dir {}", iter_dir.display()))?;
 
     let guard_log_path = iter_dir.join("guard.log");
-    let failure_log_path = iter_dir.join("failure.log");
+    let runner_error_log_path = iter_dir.join("runner_error.log");
     // Attempt counters must only move forward once we actually attempt an agent execution.
     let mut attempted_agent = false;
 
@@ -186,31 +186,21 @@ pub fn run_step<E: Executor, G: GuardRunner>(
             output = out;
             guard_outcome = guard;
             tree_after = tree;
-            if guard_outcome == GuardOutcome::Fail {
-                let contents = fs::read_to_string(&guard_log_path).unwrap_or_else(|err| {
-                    format!(
-                        "runner error: could not read {}: {err}",
-                        guard_log_path.display()
-                    )
-                });
-                fs::write(&failure_log_path, contents)
-                    .with_context(|| format!("write failure log {}", failure_log_path.display()))?;
-            }
         }
         Err(err) => {
             step_error = Some(err);
 
             let err_msg = format!("runner error: {}", step_error.as_ref().unwrap());
-            if let Some(parent) = failure_log_path.parent() {
+            if let Some(parent) = runner_error_log_path.parent() {
                 fs::create_dir_all(parent)
                     .with_context(|| format!("create {}", parent.display()))?;
             }
-            fs::write(&failure_log_path, format!("{err_msg}\n"))
-                .with_context(|| format!("write {}", failure_log_path.display()))?;
+            fs::write(&runner_error_log_path, format!("{err_msg}\n"))
+                .with_context(|| format!("write {}", runner_error_log_path.display()))?;
 
             output = AgentOutput {
                 status: AgentStatus::Retry,
-                summary: err_msg,
+                summary: "runner error (see runner_error.log)".to_string(),
             };
             guard_outcome = GuardOutcome::Fail;
             tree_after = prev_tree.clone();
@@ -247,7 +237,13 @@ pub fn run_step<E: Executor, G: GuardRunner>(
     run_state.run_id = Some(run_id.clone());
     run_state.next_iter = iter + 1;
     run_state.last_status = Some(output.status);
-    run_state.last_summary = Some(output.summary.clone());
+    // Do not feed runner-internal failures to the node agent via history.md. Those errors are
+    // returned to the caller and logged under the iteration directory.
+    run_state.last_summary = if step_error.is_some() {
+        None
+    } else {
+        Some(output.summary.clone())
+    };
     run_state.last_guard = Some(guard_outcome);
     write_run_state(&run_state_path, &run_state)?;
 
@@ -452,6 +448,10 @@ fn failure_from_run_state(
     iter: u32,
     run_state: &RunState,
 ) -> Option<String> {
+    // Only show guard output, never runner-internal errors.
+    if run_state.last_status != Some(AgentStatus::Done) {
+        return None;
+    }
     if run_state.last_guard != Some(GuardOutcome::Fail) {
         return None;
     }
@@ -459,16 +459,6 @@ fn failure_from_run_state(
     if prev_iter == 0 {
         return None;
     }
-    let failure_log = root
-        .join(".runner")
-        .join("iterations")
-        .join(run_id)
-        .join(prev_iter.to_string())
-        .join("failure.log");
-    if let Ok(contents) = fs::read_to_string(&failure_log) {
-        return Some(contents);
-    }
-
     let guard_log = root
         .join(".runner")
         .join("iterations")
@@ -591,6 +581,7 @@ mod tests {
             load_run_state(&root.join(".runner/state/run_state.json")).expect("run state");
         assert_eq!(run_state.next_iter, 2);
         assert_eq!(run_state.last_status, Some(AgentStatus::Retry));
+        assert_eq!(run_state.last_summary, Some("needs more".to_string()));
 
         let iter_dir = root
             .join(".runner/iterations")
@@ -683,10 +674,6 @@ mod tests {
             .join(&outcome1.run_id)
             .join(outcome1.iter.to_string());
         assert!(iter1_dir.join("guard.log").exists());
-        let failure_log = iter1_dir.join("failure.log");
-        assert!(failure_log.exists());
-        let failure_contents = fs::read_to_string(&failure_log).expect("read failure.log");
-        assert!(failure_contents.contains("guard output"));
 
         let executor2 = FakeExecutor {
             output: AgentOutput {
@@ -709,6 +696,65 @@ mod tests {
         let failure_md = fs::read_to_string(root.join(".runner/context/failure.md"))
             .expect("read .runner/context/failure.md");
         assert!(failure_md.contains("guard output"));
+    }
+
+    /// Verifies runner-internal errors are not propagated into the agent context files.
+    #[test]
+    fn runner_errors_do_not_propagate_to_agent_context() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let root = temp.path();
+        init_git_repo(root);
+        start_run(root).expect("start");
+
+        let executor = FakeExecutor {
+            output: AgentOutput {
+                status: AgentStatus::Done,
+                summary: "ignored".to_string(),
+            },
+            tree_update: None,
+        };
+
+        struct AlwaysFailGuardRunner;
+        impl GuardRunner for AlwaysFailGuardRunner {
+            fn run(&self, _request: &crate::io::guards::GuardRequest) -> Result<GuardOutcome> {
+                Err(anyhow!("boom"))
+            }
+        }
+
+        let err = run_step(
+            root,
+            &executor,
+            &AlwaysFailGuardRunner,
+            &StepConfig::default(),
+        )
+        .expect_err("step should error");
+        assert!(err.to_string().contains("boom"));
+
+        let run_state =
+            load_run_state(&root.join(".runner/state/run_state.json")).expect("run state");
+        assert_eq!(run_state.last_status, Some(AgentStatus::Retry));
+        assert_eq!(run_state.last_summary, None);
+
+        // Next step should not include the runner error in history/failure context.
+        let executor2 = FakeExecutor {
+            output: AgentOutput {
+                status: AgentStatus::Retry,
+                summary: "needs work".to_string(),
+            },
+            tree_update: None,
+        };
+        let guard_runner2 = FakeGuardRunner {
+            outcome: GuardOutcome::Pass,
+        };
+        run_step(root, &executor2, &guard_runner2, &StepConfig::default()).expect("step2");
+
+        let history_md = fs::read_to_string(root.join(".runner/context/history.md"))
+            .expect("read .runner/context/history.md");
+        assert!(!history_md.contains("boom"));
+
+        let failure_md = fs::read_to_string(root.join(".runner/context/failure.md"))
+            .expect("read .runner/context/failure.md");
+        assert!(!failure_md.contains("boom"));
     }
 
     /// Verifies decomposition adds children to the tree and skips guards.
