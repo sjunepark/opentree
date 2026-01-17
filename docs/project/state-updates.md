@@ -68,26 +68,25 @@ a recovery path instead of propagating the error immediately:
 
 | Condition | `status` | `guard_outcome` | `attempts` |
 |-----------|----------|-----------------|------------|
-| Executor timeout | Retry | Fail | `+1` if agent attempted |
-| Output parse error | Retry | Fail | `+1` if agent attempted |
-| Guard timeout | Retry | Fail | `+1` |
-| Other runner error | Retry | Fail | `+1` if agent attempted |
+| Executor timeout | Retry | Skipped | unchanged |
+| Output parse error | Retry | Skipped | unchanged |
+| Guard timeout | Retry | Skipped | unchanged |
+| Other runner error | Retry | Skipped | unchanged |
 
 Recovery behavior:
 
 1. Error message written to `runner_error.log` under the iteration directory (for human debugging)
-2. Tree persisted with updated attempts (ensures next step sees correct count)
+2. Tree persisted without consuming an attempt
 3. Iteration logged normally (meta.json, tree snapshots)
 4. Error propagated after persistence (step returns error, but state is consistent)
 
-The `attempted_agent` flag tracks whether agent execution was actually started.
-Attempts only increment when true—pre-execution failures (e.g., config load error)
-don't consume retry budget.
+Attempts only increment from successful agent outputs via `apply_state_updates()`.
+Runner-internal failures never increment attempts.
 
 Runner-internal errors are not fed back to the node agent via `.runner/context/history.md` or
 `.runner/context/failure.md`.
 
-Code: `runner/src/step.rs` recovery block (lines 165-200)
+Code: `runner/src/step.rs` `run_step()` recovery `match attempt { ... }`
 
 ## Flow Summary
 

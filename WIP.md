@@ -6,6 +6,7 @@
 - Implemented `runner start` (auto run-id, `runner/<run-id>` branch checkout, bootstrap commit).
 - Enforced git policy + deterministic per-iteration commits in `runner step`.
 - Implemented TOML runner config + shared per-iteration timeout/output caps; `runner step` commits even on post-start failures.
+- Clarified attempt semantics: runner-internal failures do not increment `attempts` (only successful agent outputs do).
 
 ## Next
 
