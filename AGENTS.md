@@ -7,14 +7,9 @@
 
 ## Documentation Structure
 
-Root markdown files (`ARCHITECTURE.md`, `VISION.md`, `DECISIONS.md`) should stay **concise and scannable**:
-
-- Keep root docs focused on high-level concepts and decisions
-- Move detailed explanations (data flows, examples, deep dives) to `docs/project/`
-- Link to detailed docs with relative paths: `[topic](docs/project/topic.md)`
-- Readers should be able to understand the system from root docs alone, then drill down as needed
-
-This enables progressive disclosure: quick orientation from root docs, detailed reference when needed.
+- **Root docs** (`ARCHITECTURE.md`, `VISION.md`, `DECISIONS.md`): Goals and vision; may describe desired future state
+  - ⚠️ `ARCHITECTURE.md` is aspirational — verify against code before assuming features exist
+- **Project docs** (`docs/project/`): Implementation details; **must be accurate and current**
 
 ## Commands
 
