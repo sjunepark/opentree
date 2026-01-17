@@ -61,6 +61,31 @@ what the agent claims.
 
 Code: `runner/src/core/state_update.rs:98-118`
 
+## Runner Error Recovery
+
+When step execution fails (timeout, output parse error, etc.), the runner enters
+a recovery path instead of propagating the error immediately:
+
+| Condition | `status` | `guard_outcome` | `attempts` |
+|-----------|----------|-----------------|------------|
+| Executor timeout | Retry | Fail | `+1` if agent attempted |
+| Output parse error | Retry | Fail | `+1` if agent attempted |
+| Guard timeout | Retry | Fail | `+1` |
+| Other runner error | Retry | Fail | `+1` if agent attempted |
+
+Recovery behavior:
+
+1. Error message written to `guard.log` (provides failure context for next iteration)
+2. Tree persisted with updated attempts (ensures next step sees correct count)
+3. Iteration logged normally (meta.json, tree snapshots)
+4. Error propagated after persistence (step returns error, but state is consistent)
+
+The `attempted_agent` flag tracks whether agent execution was actually started.
+Attempts only increment when true—pre-execution failures (e.g., config load error)
+don't consume retry budget.
+
+Code: `runner/src/step.rs` recovery block (lines 165-200)
+
 ## Flow Summary
 
 ```text

@@ -42,6 +42,6 @@ The guard shares the iteration timeout budget with the executor — whatever tim
 
 ## Source Files
 
-- `runner/src/io/guards.rs` — `GuardRunner` trait, `JustGuardRunner`, `run_guards_if_needed`
-- `runner/src/io/config.rs` — `guard_output_limit_bytes`, `guard.command`
-- `runner/src/step.rs` — guard invocation in `run_step` (lines 142-157)
+- `runner/src/io/guards.rs` — `GuardRunner` trait, `CommandGuardRunner`, `run_guards_if_needed`
+- `runner/src/io/config.rs` — `guard_output_limit_bytes`, `guard.command`, `iteration_timeout_secs`
+- `runner/src/step.rs` — guard invocation in `run_step`
