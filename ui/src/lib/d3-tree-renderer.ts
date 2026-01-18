@@ -49,14 +49,21 @@ export interface TreeRendererOptions {
   onNodeClick: (node: Node) => void;
 }
 
+export interface TreeRendererControls {
+  destroy: () => void;
+  resetZoom: () => void;
+  zoomIn: () => void;
+  zoomOut: () => void;
+}
+
 /**
  * Creates a tree renderer attached to an SVG element.
- * Returns a destroy function for cleanup.
+ * Returns controls for cleanup and zoom manipulation.
  */
 export function createTreeRenderer(
   svg: SVGSVGElement,
   options: TreeRendererOptions
-): { destroy: () => void } {
+): TreeRendererControls {
   const { tree, activePath, selectedNodeId, onNodeClick } = options;
 
   // Clear any existing content
@@ -74,18 +81,27 @@ export function createTreeRenderer(
   // Calculate bounds for viewBox
   const bounds = computeBounds(layoutRoot);
 
-  // Setup SVG with proper viewBox
-  const g = setupSvg(svgSelection, bounds);
+  // Setup SVG with zoom behavior
+  const { contentG, zoom } = setupSvg(svgSelection, bounds);
 
   // Render links first (below nodes)
-  renderLinks(g, layoutRoot, activePath);
+  renderLinks(contentG, layoutRoot, activePath);
 
   // Render nodes
-  renderNodes(g, layoutRoot, activePath, selectedNodeId, tree, onNodeClick);
+  renderNodes(contentG, layoutRoot, activePath, selectedNodeId, tree, onNodeClick);
 
   return {
     destroy: () => {
       svgSelection.selectAll('*').remove();
+    },
+    resetZoom: () => {
+      svgSelection.transition().duration(300).call(zoom.transform, d3.zoomIdentity);
+    },
+    zoomIn: () => {
+      svgSelection.transition().duration(200).call(zoom.scaleBy, 1.5);
+    },
+    zoomOut: () => {
+      svgSelection.transition().duration(200).call(zoom.scaleBy, 0.67);
     },
   };
 }
@@ -172,12 +188,15 @@ function computeBounds(root: HierarchyPointNode<TreeNode>): {
 }
 
 /**
- * Setup SVG with proper viewBox and create main group.
+ * Setup SVG with proper viewBox, zoom behavior, and nested group structure.
  */
 function setupSvg(
   svg: d3.Selection<SVGSVGElement, unknown, null, undefined>,
   bounds: { minX: number; maxX: number; minY: number; maxY: number }
-): d3.Selection<SVGGElement, unknown, null, undefined> {
+): {
+  contentG: d3.Selection<SVGGElement, unknown, null, undefined>;
+  zoom: d3.ZoomBehavior<SVGSVGElement, unknown>;
+} {
   // Width/height based on bounds (swap x/y for horizontal layout)
   const width =
     bounds.maxY - bounds.minY + NODE_WIDTH + PADDING.left + PADDING.right;
@@ -194,8 +213,38 @@ function setupSvg(
     .attr('viewBox', `${viewBoxX} ${viewBoxY} ${width} ${height}`)
     .attr('preserveAspectRatio', 'xMidYMid meet');
 
-  // Create main group (no transform needed, nodes positioned absolutely)
-  return svg.append('g');
+  // Create nested group structure: zoomG receives transforms, contentG holds nodes/links
+  const zoomG = svg.append('g').attr('class', 'zoom-container');
+  const contentG = zoomG.append('g').attr('class', 'content');
+
+  // Define world bounds for translateExtent (keep tree visible when panning)
+  // Note: bounds use D3's coordinate system (minY/maxY = horizontal, minX/maxX = vertical)
+  const worldBounds: [[number, number], [number, number]] = [
+    [viewBoxX - width, viewBoxY - height],
+    [viewBoxX + width * 2, viewBoxY + height * 2],
+  ];
+
+  // Create zoom behavior
+  const zoom = d3
+    .zoom<SVGSVGElement, unknown>()
+    .scaleExtent([0.25, 2]) // 25% to 200% zoom
+    .translateExtent(worldBounds)
+    // Filter: allow zoom on wheel events, but only start drag-pan from empty space (not nodes)
+    .filter((event: Event) => {
+      // Always allow wheel events (zoom)
+      if (event.type === 'wheel') return true;
+      // For mouse/touch events, only allow if not starting on a node
+      const target = event.target as Element | null;
+      return !target?.closest('.node');
+    })
+    .on('zoom', (event: d3.D3ZoomEvent<SVGSVGElement, unknown>) => {
+      zoomG.attr('transform', event.transform.toString());
+    });
+
+  // Attach zoom to SVG (receives wheel/drag events)
+  svg.call(zoom);
+
+  return { contentG, zoom };
 }
 
 /**
