@@ -17,7 +17,7 @@ use anyhow::{Context, Result, anyhow};
 #[cfg(feature = "test-support")]
 use tempfile::TempDir;
 
-use crate::core::types::{AgentOutput, GuardOutcome};
+use crate::core::types::{AgentOutput, GuardOutcome, TreeDecision};
 use crate::io::config::RunnerConfig;
 #[cfg(feature = "test-support")]
 use crate::io::config::write_config;
@@ -157,8 +157,19 @@ pub fn load_config_fixture(name: &str) -> Result<RunnerConfig> {
 /// Scripted executor response for a single invocation.
 #[derive(Debug, Clone)]
 pub struct ScriptedExec {
-    pub output: AgentOutput,
+    pub output: ScriptedOutput,
     pub tree_update: Option<Node>,
+}
+
+/// Supported scripted outputs for the executor interface.
+///
+/// The runner invokes the executor for multiple roles (tree agent, executor agent),
+/// so tests must be able to script different JSON shapes.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(untagged)]
+pub enum ScriptedOutput {
+    TreeDecision(TreeDecision),
+    AgentOutput(AgentOutput),
 }
 
 /// Scripted executor for deterministic multi-iteration tests.
