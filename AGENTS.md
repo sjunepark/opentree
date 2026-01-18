@@ -2,7 +2,6 @@
 
 ## Session Continuity
 
-- **Always read `WIP.md` at session start** and keep it current. It reflects ongoing work so agents without prior context can resume immediately.
 - **Read `VISION.md` and `ARCHITECTURE.md`** to understand the project's principles and technical design.
 
 ## Documentation Structure
