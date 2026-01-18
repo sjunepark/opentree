@@ -1,4 +1,12 @@
-import type { Node, RunState, RunEntry, IterationMeta, AgentOutput, RunnerConfig } from './stores';
+import type {
+  Node,
+  RunState,
+  RunEntry,
+  IterationMeta,
+  AgentOutput,
+  RunnerConfig,
+  StreamEvent,
+} from './types';
 
 const API_BASE = '/api';
 
@@ -37,11 +45,6 @@ export async function fetchGuardLog(runId: string, iter: number): Promise<string
     throw new Error(`API error: ${response.status} ${response.statusText}`);
   }
   return response.text();
-}
-
-export interface StreamEvent {
-  type?: string;
-  [key: string]: unknown;
 }
 
 export async function fetchStream(runId: string, iter: number, offset?: number): Promise<StreamEvent[]> {

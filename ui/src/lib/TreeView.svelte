@@ -1,6 +1,5 @@
 <script lang="ts">
-  import type { Node } from './stores';
-  import { selectedNode } from './stores';
+  import type { Node } from './types';
   import TreeNode from './TreeNode.svelte';
 
   interface Props {

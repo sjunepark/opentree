@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { Node } from './stores';
+  import type { Node } from './types';
 
   interface Props {
     node: Node;
@@ -65,10 +65,6 @@
     display: flex;
     flex-direction: column;
     gap: 1rem;
-  }
-
-  .section {
-    /* Section styling */
   }
 
   .section-title {

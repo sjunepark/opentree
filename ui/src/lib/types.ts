@@ -1,6 +1,5 @@
-import { writable, type Writable } from 'svelte/store';
-
 // Types matching the runner's data structures
+
 export interface Node {
   id: string;
   order: number;
@@ -51,18 +50,19 @@ export interface RunnerConfig {
   [key: string]: unknown;
 }
 
-export type ActiveTab = 'node' | 'iteration' | 'config' | 'docs';
+export interface StreamEvent {
+  type?: string;
+  [key: string]: unknown;
+}
 
-// Stores
-export const tree: Writable<Node | null> = writable(null);
-export const runState: Writable<RunState | null> = writable(null);
-export const runs: Writable<RunEntry[]> = writable([]);
-export const selectedNode: Writable<Node | null> = writable(null);
-export const selectedIteration: Writable<{ run_id: string; iter: number } | null> = writable(null);
-export const sseConnected: Writable<boolean> = writable(false);
-export const loading: Writable<boolean> = writable(true);
-export const error: Writable<string | null> = writable(null);
-export const config: Writable<RunnerConfig | null> = writable(null);
-export const assumptions: Writable<string> = writable('');
-export const questions: Writable<string> = writable('');
-export const activeTab: Writable<ActiveTab> = writable('node');
+// Unified timeline entry for the history view
+export interface TimelineEntry {
+  run_id: string;
+  iter: number;
+  node_id: string;
+  status: 'done' | 'retry' | 'decomposed' | 'running';
+  guard: 'pass' | 'fail' | 'skipped' | null;
+}
+
+// Selection state
+export type SelectionType = 'node' | 'iteration' | null;

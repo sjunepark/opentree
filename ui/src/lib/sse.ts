@@ -1,4 +1,4 @@
-import { sseConnected } from './stores';
+import { connection } from './stores.svelte';
 
 type ChangeHandler = (event: ChangeEvent) => void;
 
@@ -25,7 +25,7 @@ export function connect(): void {
   eventSource = new EventSource('/events');
 
   eventSource.addEventListener('connected', () => {
-    sseConnected.set(true);
+    connection.sseConnected = true;
     if (reconnectTimeout) {
       clearTimeout(reconnectTimeout);
       reconnectTimeout = null;
@@ -42,7 +42,7 @@ export function connect(): void {
   });
 
   eventSource.addEventListener('error', () => {
-    sseConnected.set(false);
+    connection.sseConnected = false;
     eventSource?.close();
     eventSource = null;
 
@@ -65,5 +65,5 @@ export function disconnect(): void {
     eventSource.close();
     eventSource = null;
   }
-  sseConnected.set(false);
+  connection.sseConnected = false;
 }
