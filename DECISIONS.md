@@ -199,3 +199,31 @@ Invariants:
   - Missing toolchains: should a run be `failed` or `skipped`?
   - Multiple runs: reuse workspace for speed vs. create fresh for isolation?
 - References: `ARCHITECTURE.md` §13, `docs/project/eval.md`
+
+## 2026-01-18 — Codex integration: `codex exec` + JSONL events; defer experimental servers
+
+- Status: accepted
+- Decision:
+  - Keep the default executor integration on `codex exec` with `--output-schema` and
+    `--output-last-message` output files.
+  - If/when progress visibility is needed, prefer enabling `codex exec --json` and capturing the
+    JSONL event stream, rather than migrating to an experimental protocol.
+  - Defer switching to `codex app-server` / `codex mcp-server` until the runner requires capabilities
+    that `codex exec` cannot provide.
+- Rationale:
+  - `codex exec` is the simplest stable surface and aligns with the runner model (fresh session per
+    iteration, schema-constrained final output).
+  - `--json` provides a low-cost path to streaming observability without introducing a new long-lived
+    connection lifecycle.
+  - `app-server` / `mcp-server` are explicitly experimental and add protocol + lifecycle complexity
+    (version churn, reconnection, handshake, request correlation).
+- Consequences:
+  - Executor logs may contain both human-readable output and/or JSONL events; if we standardize event
+    capture, define a deterministic file name/location and parsing policy.
+  - Any future migration to `app-server` should be driven by evaluation data (need for interruption,
+    multi-turn sessions, richer diagnostics) rather than speculation.
+- Open questions:
+  - Do we want a runner-owned `events.jsonl` artifact (and where should it live: `context/`,
+    `state/`, or `iterations/`)?
+  - Should the executor treat missing/unknown event types as ignorable, or fail fast?
+- References: `VISION.md`, `ARCHITECTURE.md`, `IMPENDING.md`

@@ -13,6 +13,7 @@
 - Enforced stuck-node hard-stop in `runner step` (exits non-zero when `attempts == max_attempts`).
 - Completed `.plan/6` (MVP commands: `runner validate` + `runner select`, shared helpers, docs).
 - Completed `.plan/7` (evaluation framework: eval crate, cases, harness, reporting).
+- Recorded Codex integration decision: keep `codex exec`; use `--json` for streaming if needed; defer `app-server`/`mcp-server`.
 
 ## Next
 
