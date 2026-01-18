@@ -1,5 +1,38 @@
 # Testing
 
+## Test Design Philosophy
+
+### Unit vs Lifecycle Tests
+
+**Unit tests** verify single-function behavior in isolation. Use when testing:
+
+- Selection algorithms (e.g., `leftmost_open_leaf`, `is_stuck`)
+- Single-step logic with clear inputs and outputs
+- Error handling and edge cases
+
+**Lifecycle tests** verify emergent behavior across multiple iterations. Use when:
+
+- Testing requires multiple `run_step` iterations
+- Verifying component handoffs (executor → guards → state updates)
+- Testing accumulated state (attempts incrementing, passes propagating)
+
+### Deduplication Principle
+
+Prefer a single test with multiple assertions over separate tests for related behaviors.
+This reduces test setup overhead and documents related invariants together.
+
+```rust
+// Prefer: single test covering related cases
+#[test]
+fn leftmost_open_leaf_traversal_cases() {
+    // All traversal edge cases in one function with clear assertions
+}
+
+// Avoid: separate tests duplicating setup
+#[test] fn leftmost_open_leaf_single_unpassed() { ... }
+#[test] fn leftmost_open_leaf_all_passed() { ... }
+```
+
 ## Layers
 
 - Pure logic tests: selector, invariants, state updates, immutability checks.
