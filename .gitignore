@@ -5,5 +5,3 @@ bin/
 target/
 .runner/context/
 .runner/iterations/
-
-.plan
