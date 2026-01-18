@@ -16,6 +16,13 @@
 - Recorded Codex integration decision: keep `codex exec`; use `--json` for streaming if needed; defer `app-server`/`mcp-server`.
 - Implemented `runner-ui` crate: read-only web UI for monitoring runner state (axum backend + Svelte frontend).
 - Extended runner-ui to expose state files (config.toml, assumptions.md, questions.md) via tabbed center panel.
+- **Rewrote runner-ui frontend** with new focused layout:
+  - StatusBar: connection status, run ID, iteration number, elapsed timer
+  - LiveOutput: streaming events with auto-scroll, color-coded event types
+  - BottomSection: HistoryTimeline (unified iteration list) + ContextPanel (node/iteration detail)
+  - SecondaryDrawer: collapsible tree/config/docs (collapsed by default)
+  - Migrated stores to Svelte 5 runes (`$state`), extracted types to `types.ts`
+  - Deleted old components: IterationList, IterationDetail, ConnectionStatus, stores.ts
 
 ## Next
 

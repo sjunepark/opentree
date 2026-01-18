@@ -1,6 +1,7 @@
 <script lang="ts">
-  import type { Node } from './stores';
-  import { selectedNode } from './stores';
+  import type { Node } from './types';
+  import { selection, selectNode } from './stores.svelte';
+  import TreeNode from './TreeNode.svelte';
 
   interface Props {
     node: Node;
@@ -8,7 +9,12 @@
   }
 
   let { node, depth }: Props = $props();
-  let expanded = $state(depth < 2); // Auto-expand first two levels
+
+  // Initial expansion state based on depth (depth is constant per component instance)
+  let expanded = $state(false);
+  $effect(() => {
+    expanded = depth < 2;
+  });
 
   function toggle() {
     if (node.children.length > 0) {
@@ -18,7 +24,7 @@
 
   function select(event: MouseEvent) {
     event.stopPropagation();
-    selectedNode.set(node);
+    selectNode(node);
   }
 
   function getStatusClass(node: Node): string {
@@ -35,7 +41,7 @@
     return 'pending';
   }
 
-  let isSelected = $derived($selectedNode?.id === node.id);
+  const isSelected = $derived(selection.nodeId === node.id);
 </script>
 
 <div class="tree-node" style="--depth: {depth}">
@@ -63,7 +69,7 @@
   {#if expanded && node.children.length > 0}
     <div class="children">
       {#each node.children as child (child.id)}
-        <svelte:self node={child} depth={depth + 1} />
+        <TreeNode node={child} depth={depth + 1} />
       {/each}
     </div>
   {/if}
@@ -142,9 +148,5 @@
   .status-pending {
     background-color: #f1f5f9;
     color: #64748b;
-  }
-
-  .children {
-    /* Children inherit depth for indentation */
   }
 </style>

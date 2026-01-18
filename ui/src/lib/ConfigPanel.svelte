@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { RunnerConfig } from './stores';
+  import type { RunnerConfig } from './types';
 
   interface Props {
     config: RunnerConfig;
