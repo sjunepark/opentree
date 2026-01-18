@@ -1,4 +1,5 @@
 max_attempts_default = 2
+max_iterations = 10
 iteration_timeout_secs = 120
 executor_output_limit_bytes = 5000
 guard_output_limit_bytes = 4000

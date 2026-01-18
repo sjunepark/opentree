@@ -42,7 +42,7 @@ From a target project repo root:
 runner start
 runner validate
 runner select
-runner step
+runner loop
 ```
 
 Notes:

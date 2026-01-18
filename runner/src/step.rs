@@ -77,6 +77,27 @@ impl std::fmt::Display for StuckLeafError {
 
 impl std::error::Error for StuckLeafError {}
 
+/// Error when the run has exceeded the configured maximum number of iterations.
+///
+/// Note: `next_iter` is the *next* iteration number to run (1-indexed).
+#[derive(Debug, Clone)]
+pub struct MaxIterationsExceededError {
+    pub next_iter: u32,
+    pub max_iterations: u32,
+}
+
+impl std::fmt::Display for MaxIterationsExceededError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "max iterations exceeded: next_iter={} max_iterations={}",
+            self.next_iter, self.max_iterations
+        )
+    }
+}
+
+impl std::error::Error for MaxIterationsExceededError {}
+
 /// Execute one deterministic iteration of the agent loop.
 ///
 /// Selects the leftmost open leaf, writes context, executes the agent,
@@ -107,6 +128,13 @@ pub fn run_step<E: Executor, G: GuardRunner>(
     enforce_run_id_matches_goal(root, &run_id)?;
     enforce_on_run_branch(root, &run_id)?;
     let iter = run_state.next_iter;
+    if iter > cfg.max_iterations {
+        return Err(MaxIterationsExceededError {
+            next_iter: iter,
+            max_iterations: cfg.max_iterations,
+        }
+        .into());
+    }
 
     let prev_tree = load_tree(&schema_path, &tree_path)?;
     let selected = leftmost_open_leaf(&prev_tree)

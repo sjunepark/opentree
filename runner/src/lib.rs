@@ -16,6 +16,7 @@ pub mod core;
 pub mod exit_codes;
 pub mod io;
 pub mod logging;
+pub mod looping;
 pub mod select;
 pub mod start;
 pub mod step;

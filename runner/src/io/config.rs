@@ -16,6 +16,13 @@ pub struct RunnerConfig {
     /// Default `max_attempts` to use when bootstrapping new nodes.
     pub max_attempts_default: u32,
 
+    /// Maximum number of runner iterations (`runner step`) allowed for a run.
+    ///
+    /// This is distinct from per-node `max_attempts`:
+    /// - `max_attempts` bounds retries for an individual node.
+    /// - `max_iterations` bounds the overall run length.
+    pub max_iterations: u32,
+
     /// Total per-iteration wall-clock budget in seconds (agent + guards).
     pub iteration_timeout_secs: u64,
 
@@ -47,6 +54,7 @@ impl Default for RunnerConfig {
     fn default() -> Self {
         Self {
             max_attempts_default: 3,
+            max_iterations: 30,
             iteration_timeout_secs: 30 * 60,
             executor_output_limit_bytes: 100_000,
             guard_output_limit_bytes: 100_000,
@@ -59,6 +67,9 @@ impl RunnerConfig {
     pub fn validate(&self) -> Result<()> {
         if self.iteration_timeout_secs == 0 {
             return Err(anyhow!("iteration_timeout_secs must be > 0"));
+        }
+        if self.max_iterations == 0 {
+            return Err(anyhow!("max_iterations must be > 0"));
         }
         if self.executor_output_limit_bytes == 0 {
             return Err(anyhow!("executor_output_limit_bytes must be > 0"));
@@ -134,6 +145,7 @@ mod tests {
     fn config_fixture_loads() {
         let cfg = crate::test_support::load_config_fixture("non_default").expect("fixture");
         assert_eq!(cfg.max_attempts_default, 2);
+        assert_eq!(cfg.max_iterations, 10);
         assert_eq!(cfg.iteration_timeout_secs, 120);
         assert_eq!(cfg.executor_output_limit_bytes, 5000);
         assert_eq!(cfg.guard_output_limit_bytes, 4000);

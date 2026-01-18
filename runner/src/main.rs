@@ -8,6 +8,7 @@ use runner::io::config::load_config;
 use runner::io::executor::CodexExecutor;
 use runner::io::guards::CommandGuardRunner;
 use runner::io::init::{InitOptions, init_runner};
+use runner::looping::{LoopStop, run_loop};
 use runner::select::{SelectOutcome, select_from_root};
 use runner::start::start_run;
 use runner::step::{StepConfig, StuckLeafError, run_step};
@@ -36,6 +37,12 @@ enum Command {
     Select,
     /// Execute one deterministic iteration (`runner step`).
     Step {
+        /// Prompt pack size budget in bytes.
+        #[arg(long, default_value_t = StepConfig::default().prompt_budget_bytes)]
+        prompt_budget: usize,
+    },
+    /// Execute iterations until complete/stuck/limit (`runner loop`).
+    Loop {
         /// Prompt pack size budget in bytes.
         #[arg(long, default_value_t = StepConfig::default().prompt_budget_bytes)]
         prompt_budget: usize,
@@ -120,6 +127,63 @@ fn main() -> Result<()> {
                 "step: run={} iter={} node={} status={:?} guard={:?}",
                 outcome.run_id, outcome.iter, outcome.selected_id, outcome.status, outcome.guard
             );
+        }
+        Command::Loop { prompt_budget } => {
+            let executor = CodexExecutor;
+            let state_dir = Path::new(".").join(".runner").join("state");
+            let cfg = load_config(&state_dir.join("config.toml"))?;
+            let guard_runner = CommandGuardRunner::new(cfg.guard.command);
+
+            let outcome = run_loop(
+                Path::new("."),
+                &executor,
+                &guard_runner,
+                &StepConfig {
+                    prompt_budget_bytes: prompt_budget,
+                },
+                |step| {
+                    println!(
+                        "loop: step run={} iter={} node={} status={:?} guard={:?}",
+                        step.run_id, step.iter, step.selected_id, step.status, step.guard
+                    );
+                },
+            )?;
+
+            match outcome.stop {
+                LoopStop::Complete => {
+                    println!(
+                        "loop: status=complete run={} steps={} started_at_iter={}",
+                        outcome.run_id, outcome.steps_executed, outcome.started_at_iter
+                    );
+                    std::process::exit(exit_codes::OK);
+                }
+                LoopStop::Stuck {
+                    id,
+                    path,
+                    attempts,
+                    max_attempts,
+                } => {
+                    println!(
+                        "loop: status=stuck run={} id={} path={} attempts={}/{}",
+                        outcome.run_id, id, path, attempts, max_attempts
+                    );
+                    std::process::exit(exit_codes::STUCK);
+                }
+                LoopStop::MaxIterationsExceeded {
+                    next_iter,
+                    max_iterations,
+                } => {
+                    println!(
+                        "loop: status=limit run={} next_iter={} max_iterations={} steps={} started_at_iter={}",
+                        outcome.run_id,
+                        next_iter,
+                        max_iterations,
+                        outcome.steps_executed,
+                        outcome.started_at_iter
+                    );
+                    std::process::exit(exit_codes::INVALID);
+                }
+            }
         }
     }
     Ok(())

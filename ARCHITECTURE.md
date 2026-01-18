@@ -527,12 +527,12 @@ For file formats and structure: [`docs/project/iteration-logs.md`](docs/project/
 
 These are not settled yet and materially affect implementation details:
 
-- Defaults:
-  - global max iterations
-  - default `max_attempts` for new leaves
-  - output caps for executor/guards
+- Defaults (MVP):
+  - global `max_iterations` for the run (configured in `.runner/state/config.toml`)
+  - default `max_attempts` for new leaves (configured in `.runner/state/config.toml`)
+  - output caps for executor/guards (configured in `.runner/state/config.toml`)
 - Executor structured output:
-  - investigate Codex CLI schema output feature
-  - investigate Claude Code equivalent
+  - Codex schema output is implemented
+  - Claude Code equivalent is deferred (Codex-only for now)
 - ~~Stuck policy~~ → **decided**: hard-stop (see `DECISIONS.md`)
 - Whether to emit machine-readable events (ex: `events.jsonl`) in MVP or defer.
