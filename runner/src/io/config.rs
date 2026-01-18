@@ -54,7 +54,7 @@ impl Default for RunnerConfig {
     fn default() -> Self {
         Self {
             max_attempts_default: 3,
-            max_iterations: 30,
+            max_iterations: 2,
             iteration_timeout_secs: 30 * 60,
             executor_output_limit_bytes: 100_000,
             guard_output_limit_bytes: 100_000,
