@@ -40,6 +40,8 @@ pub struct CaseConfig {
     pub max_attempts_default: Option<u32>,
     /// Guard command override (default: `["just", "ci"]`).
     pub guard: Option<GuardOverride>,
+    /// Raw justfile content to inject into workspace. If None, no justfile is created.
+    pub justfile: Option<String>,
 }
 
 /// Custom guard command configuration.

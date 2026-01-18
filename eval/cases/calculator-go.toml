@@ -9,6 +9,12 @@ Usage: ./calculator <num1> <op> <num2>
 [config]
 max_iterations = 30
 max_attempts_default = 3
+justfile = """
+set shell := ["bash", "-eu", "-o", "pipefail", "-c"]
+
+ci:
+  @go build .
+"""
 
 [[checks]]
 type = "file_exists"

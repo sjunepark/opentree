@@ -577,7 +577,7 @@ type = "runner_completed"
 ### 13.3 Execution flow
 
 1. Build runner binary (`cargo build -p runner`)
-2. Create isolated workspace (fresh git repo with generated `justfile`)
+2. Create isolated workspace (fresh git repo, optional case-provided `justfile`)
 3. `runner start` → configure → `runner loop`
 4. Capture artifacts (tree, iteration logs, guard output)
 5. Run checks against final workspace state

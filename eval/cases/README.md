@@ -12,6 +12,12 @@ goal = ""               # required, non-empty
 [config]
 max_iterations = 30      # optional, > 0
 max_attempts_default = 3 # optional, > 0
+justfile = """           # optional, raw justfile content
+set shell := ["bash", "-eu", "-o", "pipefail", "-c"]
+
+ci:
+  @go build .
+"""
 
 [config.guard]
 command = ["just", "ci"] # optional override, non-empty
@@ -37,4 +43,9 @@ Notes:
 - `command_succeeds.cmd` must contain at least one entry.
 - `case.id` must be path-safe and unique across case files.
 - `env` values must be non-empty strings.
-- The workspace `justfile` is auto-generated from `command_succeeds` checks and exposes a `ci` recipe.
+
+## Justfile
+
+Justfiles are **not auto-generated**. Cases that rely on the default `just ci` guard must
+provide explicit `config.justfile` content. If `justfile` is omitted, the workspace will
+not contain a justfile—useful when using a custom guard command.

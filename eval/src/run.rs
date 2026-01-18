@@ -40,8 +40,12 @@ pub fn run_case(repo_root: &Path, case_path: &Path, case: &CaseFile) -> Result<R
 
     debug!("creating workspace");
     let workspace_base = repo_root.join("eval").join("workspaces");
-    let workspace = create_workspace(&workspace_base, &case.case.id, &case.checks)
-        .context("create workspace")?;
+    let workspace = create_workspace(
+        &workspace_base,
+        &case.case.id,
+        case.config.justfile.as_deref(),
+    )
+    .context("create workspace")?;
 
     let started_at = Utc::now();
     let eval_run_id = format!("eval-{}", Utc::now().format("%Y%m%d_%H%M%S"));

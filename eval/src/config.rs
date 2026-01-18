@@ -44,6 +44,7 @@ mod tests {
             guard: Some(GuardOverride {
                 command: vec!["make".to_string(), "ci".to_string()],
             }),
+            justfile: None,
         };
         let merged = apply_case_config(base, &overrides).expect("merge");
         assert_eq!(merged.guard.command, vec!["make", "ci"]);
