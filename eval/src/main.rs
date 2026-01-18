@@ -51,6 +51,9 @@ enum Command {
         case_id: String,
         #[arg(long, default_value_t = 1)]
         runs: u32,
+        /// Reuse the latest workspace instead of creating a new one
+        #[arg(long, short = 'c')]
+        r#continue: bool,
     },
     Report {
         case_id: String,
@@ -70,7 +73,11 @@ fn main() -> Result<()> {
     info!(cwd = %repo_root.display(), "eval cli started");
     match cli.command {
         Command::List => cli::list_cases(&repo_root),
-        Command::Run { case_id, runs } => cli::run_case_by_id(&repo_root, &case_id, runs),
+        Command::Run {
+            case_id,
+            runs,
+            r#continue,
+        } => cli::run_case_by_id(&repo_root, &case_id, runs, r#continue),
         Command::Report { case_id } => cli::report_case(&repo_root, &case_id),
         Command::Clean { case_id } => cli::clean_case(&repo_root, &case_id),
     }

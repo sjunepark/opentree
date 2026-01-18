@@ -118,6 +118,66 @@ fn update_latest_symlink(base_dir: &Path, case_id: &str, workspace_name: &str) -
     Ok(())
 }
 
+/// Resolve the latest workspace for a case via the `<case_id>_latest` symlink.
+///
+/// Returns an error if the symlink doesn't exist or points to an invalid workspace.
+#[instrument(skip_all, fields(case_id = %case_id))]
+pub fn resolve_latest_workspace(base_dir: &Path, case_id: &str) -> Result<Workspace> {
+    let symlink_path = base_dir.join(format!("{case_id}_latest"));
+
+    if !symlink_path.is_symlink() {
+        bail!(
+            "no latest workspace for case '{}': symlink {} does not exist",
+            case_id,
+            symlink_path.display()
+        );
+    }
+
+    let target = fs::read_link(&symlink_path)
+        .with_context(|| format!("read symlink {}", symlink_path.display()))?;
+
+    // The symlink is relative to base_dir
+    let root = base_dir.join(&target);
+    let name = target
+        .to_str()
+        .ok_or_else(|| anyhow::anyhow!("workspace name is not valid UTF-8"))?
+        .to_string();
+
+    if !root.exists() {
+        bail!(
+            "latest workspace for case '{}' is missing: {} does not exist",
+            case_id,
+            root.display()
+        );
+    }
+
+    if !root.join(".git").exists() {
+        bail!(
+            "latest workspace for case '{}' is not a git repository: {} has no .git/",
+            case_id,
+            root.display()
+        );
+    }
+
+    // Check that workspace is not empty (should have at least README.txt)
+    let entries: Vec<_> = fs::read_dir(&root)
+        .with_context(|| format!("read {}", root.display()))?
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_name() != ".git")
+        .collect();
+
+    if entries.is_empty() {
+        bail!(
+            "latest workspace for case '{}' is empty (no files besides .git): {}",
+            case_id,
+            root.display()
+        );
+    }
+
+    info!(path = %root.display(), "resolved latest workspace");
+    Ok(Workspace { root, name })
+}
+
 fn generate_timestamp() -> String {
     Utc::now().format("%Y%m%d_%H%M%S").to_string()
 }

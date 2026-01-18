@@ -41,6 +41,12 @@ eval-run CASE:
 eval-run-debug CASE:
   RUST_LOG=eval=debug cargo run -p eval -- run {{CASE}}
 
+eval-continue CASE:
+  RUST_LOG=eval=info cargo run -p eval -- run {{CASE}} --continue
+
+eval-continue-debug CASE:
+  RUST_LOG=eval=debug cargo run -p eval -- run {{CASE}} --continue
+
 eval-report CASE:
   RUST_LOG=eval=info cargo run -p eval -- report {{CASE}}
 
@@ -60,19 +66,20 @@ ui-build:
 ui-server PROJECT_DIR=".":
   RUST_LOG=runner_ui=info cargo run -p runner-ui -- --project-dir {{PROJECT_DIR}}
 
-# Run both UI server and Vite dev server (for development)
-ui-dev-full PROJECT_DIR=".":
-  @echo "Start backend: just ui-server {{PROJECT_DIR}}"
-  @echo "Start frontend: just ui-dev"
-  @echo "Then open http://localhost:5173"
-
 # Run eval with UI monitoring (runs eval, backend, and frontend together)
 # Usage: just eval-with-ui calculator-go
+#        just eval-with-ui calculator-go --continue
 #        Then open http://localhost:5173
-eval-with-ui CASE:
+eval-with-ui CASE *FLAGS:
   #!/usr/bin/env bash
   set -euo pipefail
   WORKSPACE_LINK="eval/workspaces/{{CASE}}_latest"
+  CONTINUE_MODE=false
+  [[ "{{FLAGS}}" == *"--continue"* || "{{FLAGS}}" == *"-c"* ]] && CONTINUE_MODE=true
+  if $CONTINUE_MODE && [[ ! -L "$WORKSPACE_LINK" ]]; then
+    echo "Error: no latest workspace for {{CASE}}"
+    exit 1
+  fi
   EVAL_PID=""
   SERVER_PID=""
   cleanup() {
@@ -80,17 +87,22 @@ eval-with-ui CASE:
     [[ -n "$SERVER_PID" ]] && kill "$SERVER_PID" 2>/dev/null || true
   }
   trap cleanup EXIT
-  echo "Starting eval for {{CASE}} in background..."
-  RUST_LOG=eval=info cargo run -p eval -- run {{CASE}} &
+  if $CONTINUE_MODE; then
+    echo "Continuing eval for {{CASE}} in background..."
+  else
+    echo "Starting eval for {{CASE}} in background..."
+  fi
+  RUST_LOG=eval=info cargo run -p eval -- run {{CASE}} {{FLAGS}} &
   EVAL_PID=$!
-  # Wait briefly for workspace to be created
-  sleep 2
-  if [[ ! -L "$WORKSPACE_LINK" ]]; then
-    echo "Waiting for workspace symlink..."
-    for i in {1..10}; do
-      sleep 1
-      [[ -L "$WORKSPACE_LINK" ]] && break
-    done
+  if ! $CONTINUE_MODE; then
+    sleep 2
+    if [[ ! -L "$WORKSPACE_LINK" ]]; then
+      echo "Waiting for workspace symlink..."
+      for i in {1..10}; do
+        sleep 1
+        [[ -L "$WORKSPACE_LINK" ]] && break
+      done
+    fi
   fi
   if [[ -L "$WORKSPACE_LINK" ]]; then
     echo ""
@@ -98,7 +110,6 @@ eval-with-ui CASE:
     echo "Starting backend server..."
     RUST_LOG=runner_ui=info cargo run -p runner-ui -- --project-dir "$WORKSPACE_LINK" &
     SERVER_PID=$!
-    # Ensure frontend dependencies are installed
     if [[ ! -d "ui/node_modules" ]]; then
       echo "Installing frontend dependencies..."
       (cd ui && bun install)

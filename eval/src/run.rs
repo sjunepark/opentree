@@ -14,7 +14,7 @@ use crate::harness::{build_runner_binary, run_runner_loop, run_runner_start};
 use crate::judge::{CommandLimits, run_checks, write_judgment};
 use crate::outcome::{Outcome, classify_outcome};
 use crate::results::{CaptureInput, capture_results, update_outcome};
-use crate::workspace::{commit_all, create_workspace, write_goal_file};
+use crate::workspace::{commit_all, create_workspace, resolve_latest_workspace, write_goal_file};
 
 /// Result of running a single case.
 #[derive(Debug)]
@@ -28,8 +28,16 @@ pub struct RunOutcome {
 }
 
 /// Run a case end-to-end: workspace creation, runner loop, checks, result capture.
-#[instrument(skip_all, fields(case_id = %case.case.id))]
-pub fn run_case(repo_root: &Path, case_path: &Path, case: &CaseFile) -> Result<RunOutcome> {
+///
+/// If `continue_latest` is true, reuses the workspace from the `<case_id>_latest` symlink
+/// instead of creating a new one.
+#[instrument(skip_all, fields(case_id = %case.case.id, continue_latest))]
+pub fn run_case(
+    repo_root: &Path,
+    case_path: &Path,
+    case: &CaseFile,
+    continue_latest: bool,
+) -> Result<RunOutcome> {
     info!("case run started");
 
     debug!("building runner binary");
@@ -38,14 +46,20 @@ pub fn run_case(repo_root: &Path, case_path: &Path, case: &CaseFile) -> Result<R
         bail!("runner binary not found at {}", runner_binary.display());
     }
 
-    debug!("creating workspace");
     let workspace_base = repo_root.join("eval").join("workspaces");
-    let workspace = create_workspace(
-        &workspace_base,
-        &case.case.id,
-        case.config.justfile.as_deref(),
-    )
-    .context("create workspace")?;
+    let workspace = if continue_latest {
+        debug!("resolving latest workspace");
+        resolve_latest_workspace(&workspace_base, &case.case.id)
+            .context("resolve latest workspace")?
+    } else {
+        debug!("creating workspace");
+        create_workspace(
+            &workspace_base,
+            &case.case.id,
+            case.config.justfile.as_deref(),
+        )
+        .context("create workspace")?
+    };
 
     let started_at = Utc::now();
     let eval_run_id = format!("eval-{}", Utc::now().format("%Y%m%d_%H%M%S"));

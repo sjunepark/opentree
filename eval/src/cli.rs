@@ -20,19 +20,25 @@ pub fn list_cases(repo_root: &Path) -> Result<()> {
 }
 
 /// Run a case by id (optionally multiple times).
-pub fn run_case_by_id(repo_root: &Path, case_id: &str, runs: u32) -> Result<()> {
+pub fn run_case_by_id(
+    repo_root: &Path,
+    case_id: &str,
+    runs: u32,
+    continue_latest: bool,
+) -> Result<()> {
     let cases_dir = repo_root.join("eval").join("cases");
     let case_path = cases_dir.join(format!("{case_id}.toml"));
     if !case_path.exists() {
         bail!("case {} not found at {}", case_id, case_path.display());
     }
     let case = CaseFile::load(&case_path).context("load case")?;
-    debug!(case_id, runs, "case loaded");
+    debug!(case_id, runs, continue_latest, "case loaded");
 
-    info!(case_id, runs, "starting runs");
+    info!(case_id, runs, continue_latest, "starting runs");
     for run_num in 1..=runs {
         debug!(case_id, run_num, runs, "starting run");
-        let outcome = run_case(repo_root, &case_path, &case).context("run case")?;
+        let outcome =
+            run_case(repo_root, &case_path, &case, continue_latest).context("run case")?;
         println!(
             "run: case={} eval_run_id={} outcome={:?} results={}",
             case_id,
