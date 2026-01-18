@@ -194,6 +194,60 @@ fn schema_with_enum_constrains_values() {
     );
 }
 
+/// Verifies that `--output-schema` enforces structure even with an unrelated prompt.
+///
+/// The prompt makes no mention of JSON or the expected schema fields. This tests
+/// whether Codex CLI's schema enforcement works regardless of prompt content.
+#[test]
+#[ignore]
+fn schema_enforced_with_arbitrary_prompt() {
+    let tmp = tempdir().expect("create tempdir");
+    let schema_dest = tmp.path().join("schema.json");
+    copy_schema(&schema_dest);
+
+    let output_path = tmp.path().join("output.json");
+
+    // Arbitrary prompt unrelated to JSON output
+    let mut child = Command::new("codex")
+        .args([
+            "exec",
+            "--output-schema",
+            schema_dest.to_str().unwrap(),
+            "--output-last-message",
+            output_path.to_str().unwrap(),
+            "--",
+            "What is the capital of France?",
+        ])
+        .spawn()
+        .expect("spawn codex");
+
+    let status = child
+        .wait_timeout(CODEX_TIMEOUT)
+        .expect("wait")
+        .expect("codex timed out");
+
+    assert!(status.success(), "codex exec failed");
+    assert!(output_path.exists(), "output file not created");
+
+    let content = fs::read_to_string(&output_path).expect("read output");
+    println!("Output: {}", content);
+
+    let json: serde_json::Value = serde_json::from_str(&content).expect("parse JSON");
+
+    // Schema should still be enforced
+    assert!(json.is_object(), "output should be an object");
+    assert!(json.get("status").is_some(), "missing 'status' field");
+    assert!(json.get("summary").is_some(), "missing 'summary' field");
+
+    let status_val = json["status"].as_str().expect("status should be string");
+    assert!(
+        ["done", "retry", "decomposed"].contains(&status_val),
+        "status '{}' not in enum; schema not enforced for arbitrary prompt",
+        status_val
+    );
+    assert!(json["summary"].is_string(), "summary should be string");
+}
+
 /// Copies the schema file from the runner crate to the destination path.
 fn copy_schema(dest: &Path) {
     // Locate schema relative to CARGO_MANIFEST_DIR
