@@ -60,6 +60,10 @@ impl Executor for CodexExecutor {
         }
         let mut cmd = Command::new("codex");
         cmd.arg("exec")
+            .arg("--sandbox")
+            .arg("danger-full-access")
+            .arg("-a")
+            .arg("never")
             .arg("--output-schema")
             .arg(&request.output_schema_path)
             .arg("--output-last-message")
