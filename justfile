@@ -65,3 +65,34 @@ ui-dev-full PROJECT_DIR=".":
   @echo "Start backend: just ui-server {{PROJECT_DIR}}"
   @echo "Start frontend: just ui-dev"
   @echo "Then open http://localhost:5173"
+
+# Run eval with UI monitoring (runs eval in background, starts UI server)
+# Usage: In terminal 1: just eval-with-ui calculator-go
+#        In terminal 2: just ui-dev
+eval-with-ui CASE:
+  #!/usr/bin/env bash
+  set -euo pipefail
+  WORKSPACE_LINK="eval/workspaces/{{CASE}}_latest"
+  echo "Starting eval for {{CASE}} in background..."
+  RUST_LOG=eval=info cargo run -p eval -- run {{CASE}} &
+  EVAL_PID=$!
+  # Wait briefly for workspace to be created
+  sleep 2
+  if [[ ! -L "$WORKSPACE_LINK" ]]; then
+    echo "Waiting for workspace symlink..."
+    for i in {1..10}; do
+      sleep 1
+      [[ -L "$WORKSPACE_LINK" ]] && break
+    done
+  fi
+  if [[ -L "$WORKSPACE_LINK" ]]; then
+    echo ""
+    echo "Workspace: $(readlink "$WORKSPACE_LINK")"
+    echo "Run 'just ui-dev' in another terminal, then open http://localhost:5173"
+    echo ""
+    RUST_LOG=runner_ui=info cargo run -p runner-ui -- --project-dir "$WORKSPACE_LINK"
+  else
+    echo "Error: workspace symlink not created"
+    kill $EVAL_PID 2>/dev/null || true
+    exit 1
+  fi
