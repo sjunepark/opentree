@@ -41,14 +41,18 @@ mod tests {
     fn leftmost_open_leaf_traversal_cases() {
         // Case 1: Single unpassed leaf → returns it
         let single = leaf("a", 0, false);
-        assert_eq!(leftmost_open_leaf(&single).map(|n| &n.id), Some(&"a".into()));
+        assert_eq!(
+            leftmost_open_leaf(&single).map(|n| &n.id),
+            Some(&"a".into())
+        );
 
         // Case 2: Single passed leaf → returns None
         let passed = leaf("a", 0, true);
         assert!(leftmost_open_leaf(&passed).is_none());
 
         // Case 3: All passed → returns None
-        let all_passed = node_with_children("root", 0, vec![leaf("a", 0, true), leaf("b", 1, true)]);
+        let all_passed =
+            node_with_children("root", 0, vec![leaf("a", 0, true), leaf("b", 1, true)]);
         assert!(leftmost_open_leaf(&all_passed).is_none());
 
         // Case 4: Respects order field (lower order first)
@@ -74,10 +78,17 @@ mod tests {
             vec![node_with_children(
                 "branch",
                 0,
-                vec![node_with_children("subbranch", 0, vec![leaf("deep", 0, false)])],
+                vec![node_with_children(
+                    "subbranch",
+                    0,
+                    vec![leaf("deep", 0, false)],
+                )],
             )],
         );
-        assert_eq!(leftmost_open_leaf(&deep).map(|n| &n.id), Some(&"deep".into()));
+        assert_eq!(
+            leftmost_open_leaf(&deep).map(|n| &n.id),
+            Some(&"deep".into())
+        );
 
         // Case 6: Wide tree with mixed passes → returns first open by order
         let wide = node_with_children(
@@ -89,7 +100,10 @@ mod tests {
                 leaf("also-open", 2, false),
             ],
         );
-        assert_eq!(leftmost_open_leaf(&wide).map(|n| &n.id), Some(&"open".into()));
+        assert_eq!(
+            leftmost_open_leaf(&wide).map(|n| &n.id),
+            Some(&"open".into())
+        );
     }
 
     /// Verifies `is_stuck` edge cases beyond the basic "attempts maxed + not passed".
