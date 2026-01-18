@@ -34,6 +34,8 @@ mod workspace;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
+use tracing::info;
+use tracing_subscriber::EnvFilter;
 
 #[derive(Parser)]
 #[command(name = "eval", version, about = "Evaluation harness for runner")]
@@ -59,8 +61,13 @@ enum Command {
 }
 
 fn main() -> Result<()> {
+    tracing_subscriber::fmt()
+        .with_env_filter(EnvFilter::from_default_env())
+        .init();
+
     let cli = Cli::parse();
     let repo_root = std::env::current_dir()?;
+    info!(cwd = %repo_root.display(), "eval cli started");
     match cli.command {
         Command::List => cli::list_cases(&repo_root),
         Command::Run { case_id, runs } => cli::run_case_by_id(&repo_root, &case_id, runs),

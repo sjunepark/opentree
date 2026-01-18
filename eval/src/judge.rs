@@ -11,6 +11,7 @@ use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
+use tracing::{debug, instrument, warn};
 use wait_timeout::ChildExt;
 
 use crate::case::Check;
@@ -65,6 +66,7 @@ pub enum CheckOutcome {
 }
 
 /// Run all checks and collect outcomes.
+#[instrument(skip_all, fields(check_count = checks.len()))]
 pub fn run_checks(
     checks: &[Check],
     workspace_root: &Path,
@@ -77,6 +79,7 @@ pub fn run_checks(
             Check::FileExists { path } => {
                 let full_path = workspace_root.join(path);
                 let passed = full_path.exists();
+                debug!(check = "file_exists", path = %path.display(), passed, "check result");
                 outcomes.push(CheckOutcome::FileExists {
                     path: path.display().to_string(),
                     passed,
@@ -84,10 +87,21 @@ pub fn run_checks(
             }
             Check::CommandSucceeds { cmd } => {
                 let outcome = run_command_check(cmd, workspace_root, limits)?;
+                if let CheckOutcome::CommandSucceeds {
+                    passed, timed_out, ..
+                } = &outcome
+                {
+                    if *timed_out {
+                        warn!(check = "command_succeeds", cmd = ?cmd, "check timed out");
+                    } else {
+                        debug!(check = "command_succeeds", cmd = ?cmd, passed, "check result");
+                    }
+                }
                 outcomes.push(outcome);
             }
             Check::RunnerCompleted => {
                 let passed = runner_exit_code == Some(0);
+                debug!(check = "runner_completed", exit_code = ?runner_exit_code, passed, "check result");
                 outcomes.push(CheckOutcome::RunnerCompleted {
                     passed,
                     exit_code: runner_exit_code,

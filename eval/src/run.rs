@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
 use chrono::Utc;
+use tracing::{debug, info, instrument};
 
 use crate::case::CaseFile;
 use crate::config::apply_case_config;
@@ -27,12 +28,17 @@ pub struct RunOutcome {
 }
 
 /// Run a case end-to-end: workspace creation, runner loop, checks, result capture.
+#[instrument(skip_all, fields(case_id = %case.case.id))]
 pub fn run_case(repo_root: &Path, case_path: &Path, case: &CaseFile) -> Result<RunOutcome> {
+    info!("case run started");
+
+    debug!("building runner binary");
     let runner_binary = build_runner_binary(repo_root)?;
     if !runner_binary.exists() {
         bail!("runner binary not found at {}", runner_binary.display());
     }
 
+    debug!("creating workspace");
     let workspace_base = repo_root.join("eval").join("workspaces");
     let workspace = create_workspace(&workspace_base, &case.case.id, &case.checks)
         .context("create workspace")?;
@@ -45,6 +51,7 @@ pub fn run_case(repo_root: &Path, case_path: &Path, case: &CaseFile) -> Result<R
         .join(&case.case.id)
         .join(&eval_run_id);
 
+    debug!("running runner start");
     run_runner_start(&runner_binary, &workspace.root, &logs_dir, &case.env)
         .context("run runner start")?;
 
@@ -61,12 +68,20 @@ pub fn run_case(repo_root: &Path, case_path: &Path, case: &CaseFile) -> Result<R
 
     commit_all(&workspace.root, "chore(eval): configure runner")?;
 
+    debug!("running runner loop");
     let loop_status = run_runner_loop(&runner_binary, &workspace.root, &logs_dir, &case.env)
         .context("run runner loop")?;
     let finished_at = Utc::now();
 
     let exit_code = loop_status.code();
+    let duration = finished_at - started_at;
+    info!(
+        exit_code = ?exit_code,
+        duration_secs = duration.num_milliseconds() as f64 / 1000.0,
+        "runner loop finished"
+    );
 
+    debug!("capturing results");
     let capture_input = CaptureInput {
         case_id: &case.case.id,
         case_path,
@@ -81,6 +96,7 @@ pub fn run_case(repo_root: &Path, case_path: &Path, case: &CaseFile) -> Result<R
     let results_dir = capture_results(&repo_root.join("eval").join("results"), &capture_input)
         .context("capture results")?;
 
+    debug!("running checks");
     let limits = CommandLimits::default_limits();
     let judgment =
         run_checks(&case.checks, &workspace.root, exit_code, limits).context("run checks")?;
@@ -88,6 +104,8 @@ pub fn run_case(repo_root: &Path, case_path: &Path, case: &CaseFile) -> Result<R
 
     let outcome = classify_outcome(exit_code, &judgment);
     update_outcome(&results_dir, outcome).context("update outcome")?;
+
+    info!(outcome = ?outcome, results_dir = %results_dir.display(), "case run complete");
 
     Ok(RunOutcome {
         eval_run_id,

@@ -8,9 +8,12 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus};
 
 use anyhow::{Context, Result, bail};
+use tracing::{debug, error, info, instrument};
 
 /// Build the runner binary and return its path.
+#[instrument(skip_all)]
 pub fn build_runner_binary(repo_root: &Path) -> Result<PathBuf> {
+    debug!("cargo build -p runner starting");
     let output = Command::new("cargo")
         .arg("build")
         .arg("-p")
@@ -20,9 +23,12 @@ pub fn build_runner_binary(repo_root: &Path) -> Result<PathBuf> {
         .context("build runner binary")?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
+        error!(stderr = %stderr.trim(), "cargo build failed");
         bail!("runner build failed: {}", stderr.trim());
     }
-    Ok(runner_binary_path(repo_root))
+    let path = runner_binary_path(repo_root);
+    info!(binary = %path.display(), "runner binary built");
+    Ok(path)
 }
 
 /// Get the expected path to the runner binary.
@@ -32,6 +38,7 @@ pub fn runner_binary_path(repo_root: &Path) -> PathBuf {
 }
 
 /// Run `runner start` in the workspace.
+#[instrument(skip_all, fields(workdir = %workspace_root.display()))]
 pub fn run_runner_start(
     runner_path: &Path,
     workspace_root: &Path,
@@ -42,16 +49,20 @@ pub fn run_runner_start(
         .with_context(|| format!("create logs dir {}", logs_dir.display()))?;
 
     let start_log = logs_dir.join("runner.start.log");
-    run_and_capture(
+    debug!(log_path = %start_log.display(), "spawning runner start");
+    let status = run_and_capture(
         runner_path,
         workspace_root,
         &["start"],
         env_overrides,
         &start_log,
-    )
+    )?;
+    debug!(exit_code = ?status.code(), "runner start finished");
+    Ok(status)
 }
 
 /// Run `runner loop` in the workspace.
+#[instrument(skip_all, fields(workdir = %workspace_root.display()))]
 pub fn run_runner_loop(
     runner_path: &Path,
     workspace_root: &Path,
@@ -62,13 +73,16 @@ pub fn run_runner_loop(
         .with_context(|| format!("create logs dir {}", logs_dir.display()))?;
 
     let loop_log = logs_dir.join("runner.loop.log");
-    run_and_capture(
+    debug!(log_path = %loop_log.display(), "spawning runner loop");
+    let status = run_and_capture(
         runner_path,
         workspace_root,
         &["loop"],
         env_overrides,
         &loop_log,
-    )
+    )?;
+    debug!(exit_code = ?status.code(), "runner loop finished");
+    Ok(status)
 }
 
 fn run_and_capture(

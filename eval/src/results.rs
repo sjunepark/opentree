@@ -11,6 +11,7 @@ use anyhow::{Context, Result, anyhow};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use tracing::{debug, instrument, warn};
 
 use runner::io::goal::read_goal_id;
 
@@ -55,6 +56,7 @@ pub struct EvalMeta {
 /// Capture results from a completed run to the results directory.
 ///
 /// Copies tree, run_state, and iteration logs. Writes metadata.
+#[instrument(skip_all, fields(case_id = %input.case_id, eval_run_id = %input.eval_run_id))]
 pub fn capture_results(base_dir: &Path, input: &CaptureInput<'_>) -> Result<PathBuf> {
     let results_dir = results_dir(base_dir, input.case_id, input.eval_run_id);
     fs::create_dir_all(&results_dir)
@@ -110,6 +112,10 @@ pub fn capture_results(base_dir: &Path, input: &CaptureInput<'_>) -> Result<Path
         errors.push("iterations: missing run id".to_string());
     }
 
+    if !errors.is_empty() {
+        warn!(errors = ?errors, "artifact capture had errors");
+    }
+
     let duration = input.finished_at - input.started_at;
     let meta = EvalMeta {
         case_id: input.case_id.to_string(),
@@ -128,6 +134,7 @@ pub fn capture_results(base_dir: &Path, input: &CaptureInput<'_>) -> Result<Path
     };
 
     write_meta(&results_dir.join("meta.json"), &meta)?;
+    debug!(results_dir = %results_dir.display(), "results captured");
     Ok(results_dir)
 }
 

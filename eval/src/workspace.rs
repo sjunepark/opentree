@@ -9,6 +9,7 @@ use std::process::Command;
 use anyhow::{Context, Result, bail};
 use chrono::Utc;
 use rand::{Rng, distributions::Alphanumeric};
+use tracing::{debug, info, instrument};
 
 use crate::case::Check;
 
@@ -43,6 +44,7 @@ pub fn commit_all(root: &Path, message: &str) -> Result<()> {
 /// The workspace is a fresh git repository with:
 /// - A generated `justfile` from `command_succeeds` checks
 /// - A `README.txt` with case metadata
+#[instrument(skip_all, fields(case_id = %case_id))]
 pub fn create_workspace(base_dir: &Path, case_id: &str, checks: &[Check]) -> Result<Workspace> {
     fs::create_dir_all(base_dir)
         .with_context(|| format!("create workspace dir {}", base_dir.display()))?;
@@ -54,6 +56,7 @@ pub fn create_workspace(base_dir: &Path, case_id: &str, checks: &[Check]) -> Res
     fs::create_dir_all(&root)
         .with_context(|| format!("create workspace root {}", root.display()))?;
 
+    debug!(path = %root.display(), "initializing git repo");
     run_git(&root, &["init"])?;
     run_git(&root, &["config", "user.name", "Runner Eval"])?;
     run_git(
@@ -77,6 +80,7 @@ pub fn create_workspace(base_dir: &Path, case_id: &str, checks: &[Check]) -> Res
         bail!("workspace has uncommitted changes after bootstrap");
     }
 
+    info!(path = %root.display(), "workspace created");
     Ok(Workspace { root, name })
 }
 
