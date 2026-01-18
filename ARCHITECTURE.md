@@ -601,3 +601,123 @@ Results are captured under `eval/results/<case-id>/<eval-run-id>/`:
 - `tree.json`, `run_state.json` — runner state snapshots
 - `iterations/` — full iteration logs from the run
 - `runner.start.log`, `runner.loop.log` — command output
+
+## 14) Runner UI (`runner-ui/`)
+
+### 14.1 Purpose
+
+Read-only web interface for monitoring runner execution:
+
+- Real-time updates via SSE (Server-Sent Events)
+- File-system based communication (no IPC)
+- Non-intrusive (runner is unaware of UI)
+
+### 14.2 Architecture
+
+```mermaid
+flowchart LR
+    subgraph runner["Runner Process"]
+        R[Runner Loop]
+        R --> TS[".runner/state/<br/>tree.json<br/>run_state.json"]
+        R --> IL[".runner/iterations/<br/>{run}/{iter}/"]
+    end
+
+    subgraph ui["runner-ui Server (Axum)"]
+        FW[File Watcher<br/>notify crate]
+        SSE[SSE Stream<br/>/events]
+        API[REST API<br/>/api/*]
+    end
+
+    subgraph frontend["Frontend (Svelte)"]
+        SSEc[SSE Client]
+        APIc[API Client]
+        Views[TreeView<br/>IterationList<br/>NodeDetail]
+    end
+
+    TS -.->|watch| FW
+    IL -.->|watch| FW
+    FW -->|broadcast| SSE
+    SSE -->|push events| SSEc
+    API -->|fetch| APIc
+    SSEc --> Views
+    APIc --> Views
+```
+
+### 14.3 Components
+
+- `main.rs` — Server init, CLI args, routing
+- `state.rs` — AppState, ChangeEvent types
+- `sse.rs` — File watcher, SSE stream, debouncing (100ms)
+- `routes.rs` — REST endpoints
+
+### 14.4 API Endpoints
+
+| Endpoint | Returns |
+|----------|---------|
+| `/api/tree` | Full task tree JSON |
+| `/api/run-state` | Run bookkeeping |
+| `/api/iterations` | List of runs/iterations |
+| `/api/iterations/{run}/{iter}` | Iteration detail (meta+output) |
+| `/api/iterations/{run}/{iter}/guard.log` | Guard output text |
+| `/events` | SSE stream |
+
+### 14.5 SSE Events
+
+- `tree_changed` — tree.json modified
+- `run_state_changed` — run_state.json modified
+- `iteration_added` — new iteration directory created
+
+### 14.6 Design Principles
+
+- **Read-only by design** — never writes to `.runner/`
+- **Non-intrusive** — runner unaware of UI
+- **Event-driven** — SSE push vs polling
+- **Graceful degradation** — API-only without static files
+
+## 15) Eval + UI Integration
+
+### 15.1 Overview
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Just as just eval-with-ui
+    participant Eval
+    participant Runner
+    participant UI as runner-ui
+    participant Browser
+
+    User->>Just: just eval-with-ui CASE
+    Just->>Eval: cargo run -p eval (background)
+    Eval->>Eval: Create workspace symlink
+    Just->>UI: cargo run -p runner-ui --project-dir
+    Just->>Just: Start Vite dev server
+    Browser->>UI: Connect SSE /events
+    Eval->>Runner: runner start + loop
+    Runner->>Runner: Write .runner/state/*
+    UI->>Browser: Push tree_changed
+    Browser->>UI: Fetch /api/tree
+    loop Each iteration
+        Runner->>Runner: Write iteration logs
+        UI->>Browser: Push iteration_added
+        Browser->>UI: Fetch /api/iterations/{run}/{iter}
+    end
+```
+
+### 15.2 Workspace Symlink Pattern
+
+Eval creates a predictable symlink for monitoring:
+
+```text
+eval/workspaces/{case}_latest/  →  actual workspace directory
+```
+
+runner-ui mounts this path, allowing stable URLs regardless of the underlying workspace location.
+
+### 15.3 Usage
+
+```bash
+just eval-with-ui CASE     # Combined: eval + backend + frontend
+just ui-server DIR         # Backend only
+just ui-dev                # Frontend dev server only
+```
