@@ -998,6 +998,7 @@ dependencies = [
  "anyhow",
  "clap",
  "jsonschema",
+ "runner",
  "serde",
  "serde_json",
  "tempfile",

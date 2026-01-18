@@ -2,7 +2,7 @@
 //!
 //! Includes:
 //! - Node builders for invariants/unit tests.
-//! - `TestRepo` harness for temp git repos + runner state.
+//! - `TestRepo` harness for temp git repos + runner state (requires `test-support` feature).
 //! - Scripted executor/guard runners for multi-iteration scenarios.
 //! - Fixture loaders for JSON/TOML seeds.
 
@@ -10,23 +10,21 @@ use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::fs;
 use std::path::{Path, PathBuf};
-#[cfg(test)]
+#[cfg(feature = "test-support")]
 use std::process::Command;
 
 use anyhow::{Context, Result, anyhow};
-#[cfg(test)]
+#[cfg(feature = "test-support")]
 use tempfile::TempDir;
 
 use crate::core::types::{AgentOutput, GuardOutcome};
 use crate::io::config::RunnerConfig;
 use crate::io::executor::{ExecRequest, Executor};
 use crate::io::guards::{GuardRequest, GuardRunner};
-#[cfg(test)]
+#[cfg(feature = "test-support")]
 use crate::io::run_state::{RunState, load_run_state};
-#[cfg(test)]
-use crate::io::tree_store::load_tree;
-use crate::io::tree_store::write_tree;
-#[cfg(test)]
+use crate::io::tree_store::{load_tree, write_tree};
+#[cfg(feature = "test-support")]
 use crate::start::{StartOutcome, start_run};
 use crate::tree::Node;
 
@@ -39,7 +37,7 @@ use crate::tree::Node;
 ///
 /// Future considerations:
 /// - Promote to a reusable `runner-test-support` crate when shared across crates.
-#[cfg(test)]
+#[cfg(feature = "test-support")]
 #[derive(Debug)]
 pub struct TestRepo {
     #[allow(dead_code)]
@@ -47,7 +45,7 @@ pub struct TestRepo {
     root: PathBuf,
 }
 
-#[cfg(test)]
+#[cfg(feature = "test-support")]
 impl TestRepo {
     /// Create a new temp repo with an initial commit.
     pub fn new() -> Result<Self> {
@@ -327,7 +325,7 @@ pub fn node_with_attempts(id: &str, order: i64, attempts: u32, max_attempts: u32
     node
 }
 
-#[cfg(test)]
+#[cfg(feature = "test-support")]
 fn run_git(root: &Path, args: &[&str]) -> Result<()> {
     let status = Command::new("git")
         .args(args)
