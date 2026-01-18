@@ -30,7 +30,7 @@ use wait_timeout::ChildExt;
 const CODEX_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// Path to the schema file relative to the runner crate root.
-const SCHEMA_PATH: &str = "schemas/agent_output.schema.json";
+const SCHEMA_PATH: &str = "schemas/executor_output.schema.json";
 
 /// Verifies that the Codex CLI is available in PATH.
 #[test]
@@ -54,7 +54,7 @@ fn codex_cli_available() {
 /// Verifies that `--output-schema` produces valid JSON matching the schema.
 ///
 /// Runs Codex with a simple prompt and validates the output conforms to the
-/// agent_output.schema.json schema (status enum + summary string).
+/// executor_output.schema.json schema (status enum + summary string).
 #[test]
 #[ignore]
 fn output_schema_produces_valid_json() {
@@ -98,7 +98,7 @@ fn output_schema_produces_valid_json() {
     // Validate status is valid enum value
     let status_val = json["status"].as_str().expect("status should be string");
     assert!(
-        ["done", "retry", "decomposed"].contains(&status_val),
+        ["done", "retry"].contains(&status_val),
         "status '{}' not in enum",
         status_val
     );
@@ -149,7 +149,7 @@ fn output_last_message_writes_to_path() {
 /// Verifies that the schema's enum constraint is enforced.
 ///
 /// Requests a specific enum value and confirms the output contains one of the
-/// valid enum values (done, retry, decomposed).
+/// valid enum values (done, retry).
 #[test]
 #[ignore]
 fn schema_with_enum_constrains_values() {
@@ -188,7 +188,7 @@ fn schema_with_enum_constrains_values() {
     // The schema should constrain status to valid enum values
     // (LLM should respect the constraint, but we verify the output is valid)
     assert!(
-        ["done", "retry", "decomposed"].contains(&status_val),
+        ["done", "retry"].contains(&status_val),
         "status '{}' is not a valid enum value; schema constraint may not be enforced",
         status_val
     );
@@ -241,7 +241,7 @@ fn schema_enforced_with_arbitrary_prompt() {
 
     let status_val = json["status"].as_str().expect("status should be string");
     assert!(
-        ["done", "retry", "decomposed"].contains(&status_val),
+        ["done", "retry"].contains(&status_val),
         "status '{}' not in enum; schema not enforced for arbitrary prompt",
         status_val
     );
