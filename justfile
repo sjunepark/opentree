@@ -21,6 +21,18 @@ clippy:
 test:
   cargo test --workspace
 
+# Run UI tests
+# Usage: just test-ui [filter]
+#   just test-ui               - run all UI tests
+#   just test-ui tree-utils    - run tree-utils tests
+#   just test-ui AncestryTree  - run AncestryTreeView tests
+test-ui filter="":
+  cd ui && bun run test -- {{filter}}
+
+# Run UI tests with browser UI
+test-ui-browser:
+  cd ui && bun run test:ui
+
 # Run investigation tests (ignored by default, require Codex CLI)
 # Usage: just investigate [filter]
 #   just investigate        - run all

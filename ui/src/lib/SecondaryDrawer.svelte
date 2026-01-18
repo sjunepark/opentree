@@ -1,6 +1,6 @@
 <script lang="ts">
   import { drawer, data, setDrawerTab, toggleDrawer } from './stores.svelte';
-  import TreeView from './TreeView.svelte';
+  import AncestryTreeView from './AncestryTreeView.svelte';
   import ConfigPanel from './ConfigPanel.svelte';
   import DocsPanel from './DocsPanel.svelte';
 </script>
@@ -37,7 +37,7 @@
     <div class="content">
       {#if drawer.activeTab === 'tree'}
         {#if data.tree}
-          <TreeView tree={data.tree} />
+          <AncestryTreeView tree={data.tree} />
         {:else}
           <div class="empty">No tree loaded</div>
         {/if}
