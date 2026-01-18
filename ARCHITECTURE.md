@@ -536,3 +536,68 @@ These are not settled yet and materially affect implementation details:
   - Claude Code equivalent is deferred (Codex-only for now)
 - ~~Stuck policy~~ → **decided**: hard-stop (see `DECISIONS.md`)
 - Whether to emit machine-readable events (ex: `events.jsonl`) in MVP or defer.
+
+## 13) Evaluation Framework (`eval/`)
+
+The `eval` crate provides a harness for running runner loops against declarative test cases.
+For detailed documentation, see [`docs/project/eval.md`](docs/project/eval.md).
+
+### 13.1 Purpose
+
+- Local experimentation with real runner loops (not mocked)
+- Declarative case definitions (TOML format)
+- Outcome classification: success, fail, stuck, error
+- Result capture for analysis and debugging
+
+### 13.2 Case format
+
+Cases live in `eval/cases/*.toml`:
+
+```toml
+[case]
+id = "calculator-go"
+goal = "Create a calculator CLI in Go..."
+
+[config]
+max_iterations = 30
+max_attempts_default = 3
+
+[[checks]]
+type = "file_exists"
+path = "main.go"
+
+[[checks]]
+type = "command_succeeds"
+cmd = ["go", "build", "."]
+
+[[checks]]
+type = "runner_completed"
+```
+
+### 13.3 Execution flow
+
+1. Build runner binary (`cargo build -p runner`)
+2. Create isolated workspace (fresh git repo with generated `justfile`)
+3. `runner start` → configure → `runner loop`
+4. Capture artifacts (tree, iteration logs, guard output)
+5. Run checks against final workspace state
+6. Classify outcome based on runner exit code + check results
+
+### 13.4 Outcome classification
+
+| Runner exit | Checks pass | Outcome |
+|-------------|-------------|---------|
+| 0           | Yes         | Success |
+| 0           | No          | Fail    |
+| 3           | (any)       | Stuck   |
+| 1, 2, None  | (any)       | Error   |
+
+### 13.5 Artifacts
+
+Results are captured under `eval/results/<case-id>/<eval-run-id>/`:
+
+- `meta.json` — run metadata, timing, outcome
+- `checks.json` — check results with pass/fail + diagnostics
+- `tree.json`, `run_state.json` — runner state snapshots
+- `iterations/` — full iteration logs from the run
+- `runner.start.log`, `runner.loop.log` — command output

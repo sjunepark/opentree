@@ -176,3 +176,26 @@ Invariants:
   - Agent writes `iterations/{id}/output.json` with status + summary.
   - Machine state is JSON; human notes (context/assumptions/questions) are Markdown.
 - References: `ARCHITECTURE.md`
+
+## 2026-01-18 — Evaluation framework design
+
+- Status: accepted
+- Decision:
+  - Separate `eval` crate for running real runner loops against declarative cases.
+  - Cases defined in TOML with `[case]` (id, goal), `[config]` (limits), `[[checks]]` (verification).
+  - Each run creates an isolated workspace (fresh git repo) to avoid interference.
+  - Outcome classification based on runner exit code (0/3/other) combined with check results.
+  - Results captured as structured artifacts for debugging and analysis.
+- Rationale:
+  - Real runner loops (not mocked) reveal integration issues and actual agent behavior.
+  - Declarative cases enable reproducible experiments without manual setup.
+  - Workspace isolation ensures runs don't interfere with each other or the main repo.
+  - Structured results support automated analysis and regression detection.
+- Consequences:
+  - Cases must be self-contained (goal + checks define success criteria).
+  - Workspaces and results are gitignored to avoid repo bloat.
+  - Check types are extensible (file_exists, command_succeeds, runner_completed).
+- Open questions:
+  - Missing toolchains: should a run be `failed` or `skipped`?
+  - Multiple runs: reuse workspace for speed vs. create fresh for isolation?
+- References: `ARCHITECTURE.md` §13, `docs/project/eval.md`
