@@ -87,6 +87,11 @@
     display: block;
     min-width: 100%;
     min-height: 100%;
+    cursor: grab;
+  }
+
+  .tree-svg:active {
+    cursor: grabbing;
   }
 
   /* Global styles for SVG elements rendered by D3 */
