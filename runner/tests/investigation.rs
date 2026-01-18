@@ -6,5 +6,5 @@
 //!
 //! Run with: `cargo test --test investigation -- --ignored`
 
-#[path = "investigation/codex_output_schema.rs"]
-mod codex_output_schema;
+#[path = "investigation/codex.rs"]
+mod codex;
