@@ -1,4 +1,9 @@
-//! Orchestration for starting a new run (branch + run-id + initial commit).
+//! Orchestration for starting a new run.
+//!
+//! A "run" is a single execution session identified by a stable `run_id`. Starting
+//! a run: creates `runner/<run-id>` branch, stamps `GOAL.md` with the id, and
+//! commits the bootstrap. Subsequent `runner step` invocations must be on this
+//! branch with matching ids.
 
 use std::path::Path;
 

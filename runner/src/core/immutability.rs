@@ -1,4 +1,8 @@
 //! Passed-node immutability checks.
+//!
+//! Once a node has `passes=true`, it represents completed work and must not
+//! change. This prevents agents from accidentally modifying finished subtrees.
+//! Checks enforce: node exists, same parent, identical field values.
 
 #![allow(dead_code)]
 

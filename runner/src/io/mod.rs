@@ -1,4 +1,10 @@
-//! I/O helpers for runner commands.
+//! I/O layer: all side effects live here.
+//!
+//! This module isolates filesystem, git, and process operations from pure logic.
+//! Benefits:
+//! - Core logic remains testable without mocking
+//! - Side effects are explicit and auditable
+//! - Test doubles can replace real I/O (see `test_support`)
 
 pub mod config;
 pub mod context;

@@ -1,4 +1,8 @@
-//! Executor interface and Codex backend.
+//! Executor abstraction for agent invocation.
+//!
+//! The [`Executor`] trait decouples step orchestration from the actual agent
+//! backend (currently `codex exec`). Tests use scripted executors that return
+//! predetermined outputs without spawning processes.
 
 use std::time::Duration;
 

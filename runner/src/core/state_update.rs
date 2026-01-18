@@ -1,4 +1,10 @@
 //! Runner-owned state transitions for task trees.
+//!
+//! The runner exclusively controls `passes` and `attempts` fields—agents cannot
+//! set these directly. After each iteration:
+//! 1. Runner resets these fields from the previous tree snapshot
+//! 2. Applies transition rules based on agent status and guard outcome
+//! 3. Derives parent `passes` from children (bottom-up propagation)
 
 #![allow(dead_code)]
 

@@ -1,4 +1,8 @@
-//! Guard runner adapter for `just ci`.
+//! Guard runner for post-completion verification.
+//!
+//! Guards run only when an agent declares `status: done`. They execute the
+//! configured command (e.g., `just ci`) to verify the work. Pass → node marked
+//! complete. Fail → attempt incremented, agent retries.
 
 use std::time::Duration;
 
