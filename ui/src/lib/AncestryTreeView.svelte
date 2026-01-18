@@ -1,7 +1,8 @@
 <script lang="ts">
   import type { Node } from './types';
   import { findLeftmostOpenLeaf, findPathToNode } from './tree-utils';
-  import AncestryNode from './AncestryNode.svelte';
+  import { selection, selectNode } from './stores.svelte';
+  import { createTreeRenderer } from './d3-tree-renderer';
 
   interface Props {
     tree: Node;
@@ -31,6 +32,23 @@
     return new Set(pathArray);
   });
 
+  // Create attachment function for D3 tree rendering
+  function createTreeAttachment(
+    treeData: Node,
+    path: Set<string>,
+    selectedId: string | null
+  ) {
+    return (svg: SVGSVGElement) => {
+      const renderer = createTreeRenderer(svg, {
+        tree: treeData,
+        activePath: path,
+        selectedNodeId: selectedId,
+        onNodeClick: (node) => selectNode(node),
+      });
+      return () => renderer.destroy();
+    };
+  }
+
   // Auto-scroll to active node when path changes
   $effect(() => {
     // Re-run when activePath changes
@@ -39,23 +57,72 @@
     // Use setTimeout to ensure DOM is updated
     setTimeout(() => {
       if (!containerEl) return;
-      const activeLeaf = containerEl.querySelector('.node-card.active-leaf');
+      const activeLeaf = containerEl.querySelector('.node[data-node-id] rect.node-glow');
       if (activeLeaf) {
-        activeLeaf.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        const nodeGroup = activeLeaf.closest('.node');
+        if (nodeGroup) {
+          nodeGroup.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
       }
     }, 50);
   });
 </script>
 
 <div class="ancestry-tree-view" bind:this={containerEl}>
-  <AncestryNode node={tree} {activePath} isRoot={true} />
+  <svg
+    class="tree-svg"
+    {@attach createTreeAttachment(tree, activePath, selection.nodeId)}
+  ></svg>
 </div>
 
 <style>
   .ancestry-tree-view {
-    font-size: 0.875rem;
+    font-family: system-ui, -apple-system, sans-serif;
     overflow: auto;
     height: 100%;
     padding: 0.5rem;
+  }
+
+  .tree-svg {
+    display: block;
+    min-width: 100%;
+    min-height: 100%;
+  }
+
+  /* Global styles for SVG elements rendered by D3 */
+  :global(.ancestry-tree-view .link) {
+    transition: stroke 0.15s ease;
+  }
+
+  :global(.ancestry-tree-view .node) {
+    transition: opacity 0.15s ease;
+  }
+
+  :global(.ancestry-tree-view .node:hover) {
+    opacity: 1 !important;
+  }
+
+  :global(.ancestry-tree-view .node:hover .node-rect) {
+    fill: #f1f5f9;
+  }
+
+  :global(.ancestry-tree-view .node-title) {
+    user-select: none;
+    pointer-events: none;
+  }
+
+  :global(.ancestry-tree-view .node-goal) {
+    user-select: none;
+    pointer-events: none;
+  }
+
+  :global(.ancestry-tree-view .status-badge-text) {
+    user-select: none;
+    pointer-events: none;
+  }
+
+  :global(.ancestry-tree-view .collapse-badge-text) {
+    user-select: none;
+    pointer-events: none;
   }
 </style>

@@ -83,13 +83,15 @@ describe('AncestryTreeView', () => {
     const b = createNode('b', 'Child B', false);
     const root = createNode('root', 'Root', true, [a, b]);
 
-    render(AncestryTreeView, { props: { tree: root } });
+    const { container } = render(AncestryTreeView, { props: { tree: root } });
 
     // Initially no selection
     expect(selection.nodeId).toBeNull();
 
-    // Click on sibling (Child A)
-    await user.click(screen.getByText('Child A'));
+    // Click on sibling (Child A) using data-node-id selector
+    const nodeA = container.querySelector('[data-node-id="a"]');
+    expect(nodeA).toBeInTheDocument();
+    await user.click(nodeA!);
 
     // Selection should update to Child A
     expect(selection.nodeId).toBe('a');
@@ -136,5 +138,23 @@ describe('AncestryTreeView', () => {
     expect(screen.getByText('Level 1')).toBeInTheDocument();
     expect(screen.getByText('Level 2')).toBeInTheDocument();
     expect(screen.getByText('Level 3')).toBeInTheDocument();
+  });
+
+  it('clicking on-path node updates selection', async () => {
+    const user = userEvent.setup();
+
+    const b = createNode('b', 'Child B', false);
+    const a = createNode('a', 'Child A', true, [b]);
+    const root = createNode('root', 'Root', true, [a]);
+
+    const { container } = render(AncestryTreeView, { props: { tree: root } });
+
+    // Click on root node
+    const rootNode = container.querySelector('[data-node-id="root"]');
+    expect(rootNode).toBeInTheDocument();
+    await user.click(rootNode!);
+
+    expect(selection.nodeId).toBe('root');
+    expect(selection.type).toBe('node');
   });
 });
