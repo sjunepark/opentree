@@ -185,9 +185,9 @@ The old branch remains intact for reference or rollback.
 |-----------|------|------|---------|
 | `start_run()` | `runner/src/start.rs` | 25 | Orchestrates run initialization |
 | `generate_run_id()` | `runner/src/start.rs` | 99 | Creates unique run-<sha>[-suffix] |
-| `enforce_git_policy_pre_step()` | `runner/src/step.rs` | 233 | Refuses main/master, requires clean tree |
-| `enforce_run_id_matches_goal()` | `runner/src/step.rs` | 264 | Validates run_state vs GOAL.md |
-| `enforce_on_run_branch()` | `runner/src/step.rs` | 280 | Validates current branch name |
+| `enforce_git_policy_pre_step()` | `runner/src/step.rs` | 321 | Refuses main/master, requires clean tree |
+| `enforce_run_id_matches_goal()` | `runner/src/step.rs` | 352 | Validates run_state vs GOAL.md |
+| `enforce_on_run_branch()` | `runner/src/step.rs` | 368 | Validates current branch name |
 | `read_goal_id()` | `runner/src/io/goal.rs` | 12 | Parses frontmatter id |
 | `ensure_goal_id()` | `runner/src/io/goal.rs` | 20 | Writes id to frontmatter |
 | `validate_id()` | `runner/src/io/goal.rs` | 28 | Validates id format |

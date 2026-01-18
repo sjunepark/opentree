@@ -202,6 +202,6 @@ All validation errors propagate as `anyhow::Error` to `run_step()` caller:
 | `runner/src/core/immutability.rs` | `check_passed_node_immutability()` |
 | `runner/src/core/status_validator.rs` | `validate_status_invariants()` |
 | `runner/src/io/tree_store.rs` | `load_tree()`, `write_tree()`, `validate_schema()` |
-| `runner/src/step.rs` | Validation orchestration (lines 91-147) |
+| `runner/src/step.rs` | Validation orchestration (lines 92-114, 177-178) |
 | `runner/src/tree.rs` | `Node::sort_children()` |
 | `schemas/task_tree/v1.schema.json` | Schema definition |
