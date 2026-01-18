@@ -1,3 +1,8 @@
+//! CLI tests for `runner select` command.
+//!
+//! Spawns the runner binary and verifies exit codes match expected values
+//! for complete, open, and stuck tree states.
+
 use std::process::Command;
 
 use runner::exit_codes;
