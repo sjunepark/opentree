@@ -33,13 +33,16 @@ check: mdcheck rustfmt-check clippy test
 ci: check
 
 eval-list:
-  cargo run -p eval -- list
+  RUST_LOG=eval=info cargo run -p eval -- list
 
 eval-run CASE:
-  cargo run -p eval -- run {{CASE}}
+  RUST_LOG=eval=info cargo run -p eval -- run {{CASE}}
+
+eval-run-debug CASE:
+  RUST_LOG=eval=debug cargo run -p eval -- run {{CASE}}
 
 eval-report CASE:
-  cargo run -p eval -- report {{CASE}}
+  RUST_LOG=eval=info cargo run -p eval -- report {{CASE}}
 
 eval-clean CASE:
-  cargo run -p eval -- clean {{CASE}}
+  RUST_LOG=eval=info cargo run -p eval -- clean {{CASE}}

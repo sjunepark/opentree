@@ -3,6 +3,7 @@
 use std::path::Path;
 
 use anyhow::{Context, Result, bail};
+use tracing::{debug, info};
 
 use crate::case::{CaseFile, discover_cases};
 use crate::report::aggregate;
@@ -26,8 +27,11 @@ pub fn run_case_by_id(repo_root: &Path, case_id: &str, runs: u32) -> Result<()> 
         bail!("case {} not found at {}", case_id, case_path.display());
     }
     let case = CaseFile::load(&case_path).context("load case")?;
+    debug!(case_id, runs, "case loaded");
 
-    for _ in 0..runs {
+    info!(case_id, runs, "starting runs");
+    for run_num in 1..=runs {
+        debug!(case_id, run_num, runs, "starting run");
         let outcome = run_case(repo_root, &case_path, &case).context("run case")?;
         println!(
             "run: case={} eval_run_id={} outcome={:?} results={}",
