@@ -1,236 +1,166 @@
-# Proposal: Frontend UI for Runner
+# Proposal: Read-Only Local UI for Runner (MVP)
 
 ## Problem
 
-The runner CLI produces structured data (task tree, iteration logs, run state) that is currently only accessible via files and terminal output. A frontend UI would enable:
+The runner already produces high-value artifacts (`.runner/state/tree.json`, `.runner/state/run_state.json`,
+and `.runner/iterations/...`), but they are currently only accessible via files and terminal output.
 
-- Visualizing the task tree with node statuses at a glance
-- Monitoring live progress during `runner loop` execution
-- Reviewing iteration history (logs, tree snapshots, guard output)
-- Future: sending commands/prompts to the runner
+A UI would make it much easier to:
 
-## Requirements Gathered
+- Visualize the task tree and node status at a glance
+- Monitor progress during `runner loop` execution
+- Review iteration history (agent summaries + guard output) quickly
 
-| Question | Answer |
-|----------|--------|
-| Platform preference | Uncertain; Svelte preferred for web UI |
-| Desktop concerns | Tauri layer complexity; but better filesystem access |
-| Read/write | Read-only for MVP; future command execution (not direct file editing) |
-| Live updates | Yes, required |
-| Tree view | Show whole tree with each node's status |
-| Logs/execution view | Tree graph view later; raw JSON display sufficient for MVP |
+## MVP Goals
 
-## Key Insight: Backend Required Regardless
+- Read-only UI (no mutation of `.runner/` and no command execution)
+- Local-only by default (bind `127.0.0.1`)
+- Shows the full tree with status indicators and node details
+- Provides fast access to iteration outputs/logs
+- Supports “live updates” (near-real-time refresh without manual reload)
 
-Live updates require filesystem watching. Whether web or desktop, something must:
+## MVP Non-Goals
 
-1. Watch `.runner/` for changes (tree.json, run_state.json, iterations/)
-2. Push updates to the UI in real-time
+- Remote access, authentication, or multi-user support
+- Editing the tree or files from the UI
+- Streaming detailed agent events (beyond “something changed”)
+- Packaging/distribution (desktop app, installers)
+- Polished graph visualization (raw list/tree is sufficient)
 
-The question is not "web vs desktop" but "where does the backend live?"
+## Key Constraints (Align With Project Principles)
 
-## Options Considered
+- UI is tooling: it must not compromise runner determinism or safety (`VISION.md`, `DECISIONS.md`)
+- The runner’s canonical machine state remains `.runner/state/*` (UI is a viewer)
+- Avoid introducing fragile coupling to “partial” filesystem state
 
-### Option A: Web App + Separate Server
+## Key Insight: Backend Required Regardless (But Keep It Minimal)
 
-```text
-┌──────────────────┐     WebSocket/REST     ┌──────────────────┐
-│  Svelte frontend │ ◄──────────────────────► │  Rust server     │
-│  (browser)       │                         │  (watches files) │
-└──────────────────┘                         └──────────────────┘
-```
+If the UI is a browser app, it cannot reliably watch the local filesystem directly, and it should not be given
+direct write access anyway.
 
-**Pros:**
+We still need a small local backend that:
 
-- Familiar web development workflow
-- Hot reload during UI development
-- Easy debugging (browser devtools)
-- Server can be reused for future features (command execution)
+1. Reads `.runner/` snapshots safely
+2. Notifies the UI when “something changed”
 
-**Cons:**
+## MVP Decision (Recommended)
 
-- Two processes to run (server + dev server or static serve)
+### Architecture: Web UI + Local Server
 
-### Option B: Tauri Desktop App
+- Frontend: Svelte + Vite (fast iteration and good DX)
+- Backend: `runner serve` (Rust), **read-only**, **binds `127.0.0.1` by default**
 
-```text
-┌─────────────────────────────────────────┐
-│  Tauri app                              │
-│  ┌─────────────────┐  IPC  ┌──────────┐ │
-│  │ Svelte frontend │ ◄────► │ Rust     │ │
-│  │ (webview)       │       │ backend  │ │
-│  └─────────────────┘       └──────────┘ │
-└─────────────────────────────────────────┘
-```
+### Update Transport: Prefer “Signal + Re-fetch”
 
-**Pros:**
+Instead of pushing full JSON payloads over WebSocket, the server should send lightweight “changed” signals.
+The UI responds by re-fetching the relevant snapshot(s) over REST.
 
-- Single app to launch
-- Native filesystem access without network layer
-- Native window management
+Benefits:
 
-**Cons:**
+- Avoids handling partial/inconsistent reads as “events”
+- Keeps the server and UI simpler
+- Limits payload size and reduces event storm complexity
 
-- Tauri learning curve
-- Harder debugging (IPC layer)
-- More complex build pipeline
+Implementation options (in order of recommended complexity):
 
-### Option C: Hybrid (Start Web, Wrap with Tauri Later)
+1. Polling (simplest fallback)
+2. Server-Sent Events (SSE) for low-friction push
+3. WebSocket (only when we add bidirectional commands later)
 
-Build Option A architecture, but design the server API such that it can be embedded in Tauri later.
+## Proposed Backend: `runner serve`
 
-**Pros:**
-
-- Start simple, add complexity incrementally
-- Validate UI/UX before committing to desktop
-
-**Cons:**
-
-- Requires upfront API design discipline
-
-## Decision: Option A (Web + Server) for MVP
-
-**Rationale:**
-
-1. **Runner is already Rust** — adding a server subcommand is natural
-2. **Svelte is comfortable** — leverage existing skills
-3. **Live reload** — faster UI iteration during development
-4. **Future-proof** — command execution fits naturally as POST endpoints
-5. **Tauri optional later** — if single-app UX is desired, can wrap
-
-## Proposed Architecture
-
-### Backend: `runner serve` Subcommand
-
-New subcommand added to the existing runner binary.
+### CLI
 
 ```text
-runner serve [--port 3000] [--project-dir .]
+runner serve [--bind 127.0.0.1] [--port 3000] [--project-dir .]
 ```
 
-**Responsibilities:**
+Defaults:
 
-- Watch `.runner/` directory for changes (using `notify` crate)
-- Serve REST API for initial data fetch
-- Push updates via WebSocket on file changes
+- `--bind 127.0.0.1` (local-only)
+- `--port 3000`
+- `--project-dir .` (single project per server instance for MVP)
 
-**API Surface (MVP):**
+### Responsibilities
+
+- Read `.runner/state/tree.json` and `.runner/state/run_state.json`
+- Enumerate `.runner/iterations/{run-id}/{iter}/...`
+- Provide a “changed” signal stream (`/events`) when state changes
+
+### API Surface (MVP)
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/tree` | GET | Current tree.json |
-| `/api/run-state` | GET | Current run_state.json |
-| `/api/iterations` | GET | List of runs and iterations |
-| `/api/iterations/{run}/{iter}` | GET | Specific iteration data (meta, output, guard log) |
-| `/ws` | WebSocket | Live updates (tree, run_state changes) |
+| `/api/tree` | GET | Current `.runner/state/tree.json` |
+| `/api/run-state` | GET | Current `.runner/state/run_state.json` |
+| `/api/iterations` | GET | List run IDs and iterations (basic metadata) |
+| `/api/iterations/{run}/{iter}` | GET | Per-iteration bundle (meta + output + paths) |
+| `/api/iterations/{run}/{iter}/guard.log` | GET | Guard log (text) if present |
+| `/events` | GET | SSE stream of “changed” notifications |
 
-**WebSocket Message Format:**
+### SSE Message Format (MVP)
+
+The event payload is a hint; the UI re-fetches the relevant endpoints.
 
 ```json
 {
-  "type": "tree_updated" | "run_state_updated" | "iteration_added",
-  "data": { ... }
+  "type": "tree_changed" | "run_state_changed" | "iteration_added",
+  "ts": "RFC3339 timestamp"
 }
 ```
 
-### Frontend: Svelte + Vite
+### Rust HTTP Framework Choice
 
-Separate package (e.g., `ui/` directory) with standard Vite + Svelte setup.
+Prefer `axum` for ecosystem alignment and long-term maintainability. If keeping the core runner binary lean
+becomes a concern, put `serve` behind a feature flag or a separate workspace crate.
 
-**MVP Views:**
+## Data Consistency: Avoid Partial Reads
 
-1. **Tree View** — Collapsible tree showing all nodes with status indicators
-   - `passes: true` → green checkmark
-   - `attempts > 0 && !passes` → yellow/orange (in progress or retrying)
-   - `attempts == max_attempts` → red (stuck)
-   - Expandable to show node details (goal, acceptance criteria)
+The two practical failure modes are:
 
-2. **Raw JSON Panel** — Formatted JSON display of tree.json (developer-friendly)
+1. The runner writes `tree.json`/`run_state.json` while the server is reading it.
+2. File watch events arrive in bursts, and the UI thrashes.
 
-3. **Connection Status** — Indicator showing WebSocket connection state
+Mitigations:
 
-**Future Views (not MVP):**
+- Prefer runner-side atomic writes (write temp file then rename). If not guaranteed, server should tolerate
+  transient JSON parse failures by retrying with a short backoff.
+- Debounce filesystem notifications before emitting a single “changed” event.
+- Keep the SSE payload small; treat it as an invalidation signal only.
 
-- Iteration timeline (list of iterations with status)
-- Tree graph visualization (d3 or similar)
-- Command input panel (send prompts to runner)
+## Proposed Frontend: `ui/` (Svelte + Vite)
 
-### Directory Structure
+### MVP Views
 
-```text
-.
-├── runner/              # Existing Rust crate
-│   └── src/
-│       ├── serve/       # New: HTTP/WebSocket server
-│       │   ├── mod.rs
-│       │   ├── api.rs   # REST endpoints
-│       │   └── ws.rs    # WebSocket handler
-│       └── ...
-├── ui/                  # New: Svelte frontend
-│   ├── package.json
-│   ├── vite.config.ts
-│   ├── src/
-│   │   ├── App.svelte
-│   │   ├── lib/
-│   │   │   ├── api.ts       # REST client
-│   │   │   ├── websocket.ts # WS connection
-│   │   │   └── stores.ts    # Svelte stores for tree, run_state
-│   │   └── components/
-│   │       ├── TreeView.svelte
-│   │       ├── NodeItem.svelte
-│   │       └── JsonPanel.svelte
-│   └── ...
-└── ...
-```
+1. Tree view (collapsible), with per-node indicators:
+   - `passes: true` => passed
+   - `attempts > 0 && !passes` => in progress / retrying
+   - `attempts == max_attempts && !passes` => stuck
+2. Node detail panel (goal + acceptance criteria + attempts)
+3. Iteration list (per run-id) with quick access to summary + guard log
+4. Raw JSON panel (developer-friendly)
+5. Connection status indicator (SSE connected / polling fallback)
 
-### Development Workflow
+## Development Workflow (Local)
 
 ```bash
-# Terminal 1: Run the server
-cargo run -- serve --port 3001
+# Terminal 1: Backend
+cargo run -- serve --bind 127.0.0.1 --port 3001
 
-# Terminal 2: Run Vite dev server (proxies API to backend)
+# Terminal 2: UI (proxy /api + /events to backend)
 cd ui && npm run dev
 ```
 
-Vite config proxies `/api` and `/ws` to the Rust server.
+## Open Questions (Worth Deciding Early)
 
-### Data Flow
-
-```text
-┌─────────────────────────────────────────────────────────────────┐
-│  .runner/                                                       │
-│  ├── state/tree.json ──────┐                                    │
-│  ├── state/run_state.json ─┼─► notify watcher ─► WebSocket push │
-│  └── iterations/... ───────┘                                    │
-└─────────────────────────────────────────────────────────────────┘
-                                          │
-                                          ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  Svelte frontend                                                │
-│  ├── WebSocket connection (receives live updates)               │
-│  ├── Svelte stores (reactive state)                             │
-│  └── Components (render tree, JSON, etc.)                       │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-## Open Questions
-
-1. **Port configuration** — Hardcode `localhost:3000` for MVP, or make configurable from start?
-
-2. **Tree view style** — Collapsible tree with status badges, or just formatted JSON for MVP?
-
-3. **Rust HTTP framework** — `axum` (async, popular) vs `warp` vs `actix-web`? Suggest `axum` for ecosystem alignment.
-
-4. **Static file serving** — Should `runner serve` also serve the built frontend, or keep separate?
-
-5. **Multiple project support** — MVP assumes single project directory; future may need project switching.
+1. **Event source**: should the runner also emit an append-only `.runner/state/events.jsonl` stream?
+   - If yes, the UI becomes a “tail + fetch” client and we can reduce reliance on filesystem watching.
+2. **Serving built UI**: do we eventually want `runner serve` to also serve static files for distribution?
+3. **Command execution**: if we ever add POST endpoints, do we require an explicit `--unsafe-commands` flag?
 
 ## Next Steps
 
-1. Answer open questions above
-2. Create implementation plan (phased)
-3. Set up `ui/` scaffold with Vite + Svelte
-4. Implement `runner serve` with minimal API
-5. Build tree view component
-6. Add WebSocket live updates
+1. Decide on `events.jsonl` vs filesystem watching (or explicitly defer with rationale)
+2. Write a phased implementation plan (MVP polling -> SSE -> optional WS)
+3. Implement `runner serve` (read-only REST + SSE invalidation)
+4. Scaffold `ui/` and implement tree + iteration views
