@@ -15,6 +15,11 @@
 
 - Use `just` for common workflows (`just --list` to see all); prefer `just ci` before committing.
 
+## Frontend
+
+- Use `bun` for frontend development (install, run, test, build).
+- When working with Svelte code, always use the Svelte MCP to read Svelte 5 docs.
+
 ## Rust
 
 - Prefer using `cargo` cli, rather than directly editing `Cargo.toml`.
