@@ -1,6 +1,8 @@
 <script lang="ts">
   import type { IterationMeta, AgentOutput } from './stores';
-  import { fetchIteration, fetchGuardLog } from './api';
+  import { fetchIteration, fetchGuardLog, fetchStream, type StreamEvent } from './api';
+  import { subscribe } from './sse';
+  import { onMount } from 'svelte';
 
   interface Props {
     runId: string;
@@ -12,9 +14,21 @@
   let meta: IterationMeta | null = $state(null);
   let output: AgentOutput | null = $state(null);
   let guardLog: string = $state('');
+  let streamEvents: StreamEvent[] = $state([]);
   let loading = $state(true);
   let error: string | null = $state(null);
   let showGuardLog = $state(false);
+  let showStream = $state(false);
+
+  // Subscribe to SSE for stream updates
+  onMount(() => {
+    const unsubscribe = subscribe((event) => {
+      if (event.type === 'stream_updated' && event.run_id === runId && event.iter === iter) {
+        loadStream(runId, iter);
+      }
+    });
+    return unsubscribe;
+  });
 
   // Load data when props change
   $effect(() => {
@@ -25,6 +39,7 @@
     loading = true;
     error = null;
     showGuardLog = false;
+    showStream = false;
 
     try {
       const detail = await fetchIteration(runId, iter);
@@ -37,10 +52,22 @@
       } else {
         guardLog = '';
       }
+
+      // Load stream events
+      await loadStream(runId, iter);
     } catch (e) {
       error = e instanceof Error ? e.message : 'Failed to load iteration';
     } finally {
       loading = false;
+    }
+  }
+
+  async function loadStream(runId: string, iter: number) {
+    try {
+      streamEvents = await fetchStream(runId, iter);
+    } catch {
+      // Stream may not exist yet, that's ok
+      streamEvents = [];
     }
   }
 
@@ -119,6 +146,26 @@
       <h3 class="section-title">Summary</h3>
       <p class="summary">{output.summary}</p>
     </div>
+
+    {#if streamEvents.length > 0}
+      <div class="section">
+        <button class="stream-toggle" onclick={() => (showStream = !showStream)}>
+          <span class="toggle">{showStream ? '▼' : '▶'}</span>
+          Event Stream ({streamEvents.length} events)
+        </button>
+        {#if showStream}
+          <div class="stream-events">
+            {#each streamEvents as event, i}
+              <div class="stream-event">
+                <span class="event-index">{i + 1}</span>
+                <span class="event-type">{event.type || 'unknown'}</span>
+                <pre class="event-data">{JSON.stringify(event, null, 2)}</pre>
+              </div>
+            {/each}
+          </div>
+        {/if}
+      </div>
+    {/if}
 
     {#if guardLog}
       <div class="section">
@@ -292,6 +339,73 @@
     font-size: 0.75rem;
     overflow: auto;
     max-height: 20rem;
+    white-space: pre-wrap;
+  }
+
+  .stream-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: #475569;
+    padding: 0;
+  }
+
+  .stream-toggle:hover {
+    color: #1e293b;
+  }
+
+  .stream-events {
+    margin-top: 0.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    max-height: 30rem;
+    overflow-y: auto;
+  }
+
+  .stream-event {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    padding: 0.5rem;
+    background-color: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.375rem;
+  }
+
+  .stream-event:nth-child(odd) {
+    background-color: #f1f5f9;
+  }
+
+  .event-index {
+    font-size: 0.625rem;
+    font-weight: 600;
+    color: #94a3b8;
+    font-family: ui-monospace, monospace;
+  }
+
+  .event-type {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #1e40af;
+    font-family: ui-monospace, monospace;
+  }
+
+  .event-data {
+    margin: 0;
+    padding: 0.5rem;
+    background-color: #1e293b;
+    color: #e2e8f0;
+    border-radius: 0.25rem;
+    font-family: ui-monospace, monospace;
+    font-size: 0.625rem;
+    overflow: auto;
+    max-height: 10rem;
     white-space: pre-wrap;
   }
 

@@ -39,6 +39,26 @@ export async function fetchGuardLog(runId: string, iter: number): Promise<string
   return response.text();
 }
 
+export interface StreamEvent {
+  type?: string;
+  [key: string]: unknown;
+}
+
+export async function fetchStream(runId: string, iter: number, offset?: number): Promise<StreamEvent[]> {
+  const url = offset !== undefined
+    ? `${API_BASE}/iterations/${runId}/${iter}/stream?offset=${offset}`
+    : `${API_BASE}/iterations/${runId}/${iter}/stream`;
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`API error: ${response.status} ${response.statusText}`);
+  }
+  const text = await response.text();
+  if (!text.trim()) {
+    return [];
+  }
+  return text.trim().split('\n').map(line => JSON.parse(line));
+}
+
 export async function fetchConfig(): Promise<RunnerConfig> {
   return fetchJson<RunnerConfig>('/config');
 }

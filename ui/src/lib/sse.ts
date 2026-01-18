@@ -3,7 +3,7 @@ import { sseConnected } from './stores';
 type ChangeHandler = (event: ChangeEvent) => void;
 
 interface ChangeEvent {
-  type: 'tree_changed' | 'run_state_changed' | 'iteration_added' | 'config_changed' | 'assumptions_changed' | 'questions_changed';
+  type: 'tree_changed' | 'run_state_changed' | 'iteration_added' | 'stream_updated' | 'config_changed' | 'assumptions_changed' | 'questions_changed';
   run_id?: string;
   iter?: number;
 }

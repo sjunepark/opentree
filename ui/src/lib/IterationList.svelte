@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { SvelteSet } from 'svelte/reactivity';
   import type { RunEntry } from './stores';
   import { selectedIteration } from './stores';
 
@@ -8,8 +9,8 @@
 
   let { runs }: Props = $props();
 
-  // Track which runs are expanded
-  let expandedRuns: Set<string> = $state(new Set());
+  // Track which runs are expanded (SvelteSet for Svelte 5 reactivity)
+  let expandedRuns = new SvelteSet<string>();
 
   function toggleRun(runId: string) {
     if (expandedRuns.has(runId)) {
@@ -17,7 +18,6 @@
     } else {
       expandedRuns.add(runId);
     }
-    expandedRuns = expandedRuns; // Trigger reactivity
   }
 
   function selectIteration(runId: string, iter: number) {
