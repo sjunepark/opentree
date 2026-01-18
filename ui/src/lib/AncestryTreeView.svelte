@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Node } from './types';
-  import { findLeftmostOpenLeaf, findPathToNode } from './tree-utils';
+  import { findLeftmostOpenLeaf, findPathToNode, findNodeById } from './tree-utils';
   import { selection, selectNode } from './stores.svelte';
   import { createTreeRenderer } from './d3-tree-renderer';
 
@@ -14,10 +14,18 @@
   // Container ref for auto-scroll
   let containerEl: HTMLDivElement;
 
-  // Compute active node: use override or find leftmost open leaf
+  // Manually expanded node IDs (survives across renders, adds to active path)
+  let manuallyExpanded = $state<Set<string>>(new Set());
+
+  // Reset expansions when tree changes
+  $effect(() => {
+    const _ = tree.id;
+    manuallyExpanded = new Set();
+  });
+
+  // Compute active node: use prop override or leftmost open leaf
   const activeNode = $derived.by(() => {
     if (activeNodeId) {
-      // Override provided - find that node
       return { id: activeNodeId };
     }
     // Default: leftmost open leaf (matches runner's selector)
@@ -25,12 +33,38 @@
     return leaf;
   });
 
-  // Compute path as Set for O(1) membership checks
+  // Compute base path as Set for O(1) membership checks
   const activePath = $derived.by(() => {
     if (!activeNode) return new Set<string>();
     const pathArray = findPathToNode(tree, activeNode.id);
     return new Set(pathArray);
   });
+
+  // Combined path: active path + manually expanded paths
+  const visiblePath = $derived.by(() => {
+    const combined = new Set(activePath);
+    for (const nodeId of manuallyExpanded) {
+      // Add path to each manually expanded node
+      const pathArray = findPathToNode(tree, nodeId);
+      for (const id of pathArray) {
+        combined.add(id);
+      }
+    }
+    return combined;
+  });
+
+  // Handle node click - expand collapsed subtrees or select node
+  function handleNodeClick(node: Node) {
+    // If clicking a node that's not visible, expand its path
+    if (!visiblePath.has(node.id)) {
+      // Find a leaf in this subtree to expand the full path
+      const leaf = findLeftmostOpenLeaf(node);
+      const targetId = leaf?.id ?? node.id;
+      manuallyExpanded = new Set([...manuallyExpanded, targetId]);
+    }
+    // Always update selection for detail panel
+    selectNode(node);
+  }
 
   // Create attachment function for D3 tree rendering
   function createTreeAttachment(
@@ -43,7 +77,7 @@
         tree: treeData,
         activePath: path,
         selectedNodeId: selectedId,
-        onNodeClick: (node) => selectNode(node),
+        onNodeClick: handleNodeClick,
       });
       return () => renderer.destroy();
     };
@@ -51,8 +85,8 @@
 
   // Auto-scroll to active node when path changes
   $effect(() => {
-    // Re-run when activePath changes
-    const _ = activePath.size;
+    // Re-run when visiblePath changes
+    const _ = visiblePath.size;
 
     // Use setTimeout to ensure DOM is updated
     setTimeout(() => {
@@ -71,7 +105,7 @@
 <div class="ancestry-tree-view" bind:this={containerEl}>
   <svg
     class="tree-svg"
-    {@attach createTreeAttachment(tree, activePath, selection.nodeId)}
+    {@attach createTreeAttachment(tree, visiblePath, selection.nodeId)}
   ></svg>
 </div>
 
