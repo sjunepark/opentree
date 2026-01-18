@@ -14,7 +14,10 @@
 
 ## Next
 
-- Decide next milestone and create the next `.plan/` workstream.
+- Draft next plans (from `ARCHITECTURE.md` open decisions + `IMPENDING.md` research):
+- Plan: set MVP defaults (global max iterations, default `max_attempts`, output caps).
+- Plan: executor structured output integration (Codex/Claude schema output support).
+- Plan: decide/implement optional `events.jsonl` emission (or explicitly defer).
 
 ## Notes
 
