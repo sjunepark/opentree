@@ -8,9 +8,13 @@ use tracing::debug;
 
 use crate::tree::Node;
 
-const RUNNER_CONTRACT: &str = "Runner contract:\n- Do not modify passed nodes.\n- Do not set `passes=true` (runner-owned).\n- Only add children when declaring `decomposed`.\n- Output must be structured JSON with `status` and `summary`.";
-const OUTPUT_CONTRACT: &str =
-    "Output contract:\nYou MUST write output.json with `status` and `summary` before session ends.";
+const TREE_AGENT_CONTRACT: &str = "Tree agent contract:\n- Decide whether the selected node should be executed now (`decision=execute`) or decomposed (`decision=decompose`).\n- If `decision=decompose`, you MUST provide 1+ child specs in `children` (title, goal, optional acceptance).\n- Do NOT edit repository files in this step.\n- The runner owns `.runner/state/tree.json`; do NOT try to edit it to add children.";
+
+const EXECUTOR_CONTRACT: &str = "Executor contract:\n- Do not modify passed nodes.\n- Do not set `passes=true` (runner-owned).\n- You MAY edit open nodes in `.runner/state/tree.json` (plan can change), but you MUST NOT add children to any node.\n- Run formatting/lint/tests as appropriate before declaring `status=done`.\n- Final response must be a single JSON object matching the output schema (no markdown, no code fences).";
+
+const TREE_AGENT_OUTPUT_CONTRACT: &str = "Output contract:\nReturn a single JSON object with `decision` and `summary` (and `children` only when `decision=decompose`).";
+const EXECUTOR_OUTPUT_CONTRACT: &str =
+    "Output contract:\nReturn a single JSON object with `status` and `summary`.";
 
 /// All inputs needed to build a prompt pack.
 #[derive(Debug, Clone)]
@@ -69,10 +73,10 @@ impl PromptBuilder {
         Self { budget_bytes }
     }
 
-    /// Build a prompt pack, dropping less critical sections if over budget.
-    pub fn build(&self, input: &PromptInputs) -> PromptPack {
+    /// Build a prompt pack for the tree agent.
+    pub fn build_tree_agent(&self, input: &PromptInputs) -> PromptPack {
         let mut sections = vec![
-            PromptSection::required("contract", "Runner Contract", RUNNER_CONTRACT),
+            PromptSection::required("contract", "Tree Agent Contract", TREE_AGENT_CONTRACT),
             PromptSection::required("goal", "Goal", input.context_goal.trim()),
             PromptSection::droppable(
                 "history",
@@ -92,7 +96,44 @@ impl PromptBuilder {
             PromptSection::droppable("tree", "Tree Summary", input.tree_summary.trim()),
             PromptSection::droppable("assumptions", "Assumptions", input.assumptions.trim()),
             PromptSection::droppable("questions", "Open Questions", input.questions.trim()),
-            PromptSection::required("output", "Output Contract", OUTPUT_CONTRACT),
+            PromptSection::required("output", "Output Contract", TREE_AGENT_OUTPUT_CONTRACT),
+        ];
+
+        sections.retain(|s| !s.content.is_empty() || s.required);
+        apply_budget(&mut sections, self.budget_bytes);
+
+        PromptPack { sections }
+    }
+
+    /// Build a prompt pack for the executor agent.
+    pub fn build_executor(&self, input: &PromptInputs, planner_notes: Option<&str>) -> PromptPack {
+        let mut sections = vec![
+            PromptSection::required("contract", "Executor Contract", EXECUTOR_CONTRACT),
+            PromptSection::droppable(
+                "planner",
+                "Planner Notes",
+                planner_notes.unwrap_or("").trim(),
+            ),
+            PromptSection::required("goal", "Goal", input.context_goal.trim()),
+            PromptSection::droppable(
+                "history",
+                "History (previous attempt)",
+                input.context_history.as_deref().unwrap_or("").trim(),
+            ),
+            PromptSection::droppable(
+                "failure",
+                "Failure (guard output)",
+                input.context_failure.as_deref().unwrap_or("").trim(),
+            ),
+            PromptSection::required(
+                "selected",
+                "Selected Node",
+                &render_selected_node(&input.selected_path, &input.selected_node),
+            ),
+            PromptSection::droppable("tree", "Tree Summary", input.tree_summary.trim()),
+            PromptSection::droppable("assumptions", "Assumptions", input.assumptions.trim()),
+            PromptSection::droppable("questions", "Open Questions", input.questions.trim()),
+            PromptSection::required("output", "Output Contract", EXECUTOR_OUTPUT_CONTRACT),
         ];
 
         sections.retain(|s| !s.content.is_empty() || s.required);
@@ -283,7 +324,7 @@ mod tests {
             questions: "questions".to_string(),
         };
 
-        let pack = PromptBuilder::new(10_000).build(&input);
+        let pack = PromptBuilder::new(10_000).build_executor(&input, None);
         let keys: Vec<&str> = pack.sections.iter().map(|s| s.key).collect();
         assert_eq!(
             keys,
@@ -318,7 +359,7 @@ mod tests {
             questions: "questions".repeat(50),
         };
 
-        let pack = PromptBuilder::new(300).build(&input);
+        let pack = PromptBuilder::new(300).build_executor(&input, None);
         let keys: Vec<&str> = pack.sections.iter().map(|s| s.key).collect();
         assert!(!keys.contains(&"tree"));
         assert!(!keys.contains(&"assumptions"));

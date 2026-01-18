@@ -14,6 +14,7 @@ use tracing::{debug, info, instrument, warn};
 
 use crate::core::types::AgentOutput;
 use crate::io::process::{CommandOutput, run_command_with_stream};
+use serde::de::DeserializeOwned;
 
 /// Parameters for an executor invocation.
 #[derive(Debug, Clone)]
@@ -115,11 +116,20 @@ impl Executor for CodexExecutor {
 /// Execute the agent and load its output.
 #[instrument(skip_all, fields(output_path = %request.output_path.display()))]
 pub fn execute_and_load<E: Executor>(executor: &E, request: &ExecRequest) -> Result<AgentOutput> {
-    executor.exec(request)?;
-    ensure_output_exists(&request.output_path)?;
-    let output = read_agent_output(&request.output_path)?;
+    let output: AgentOutput = execute_and_load_json(executor, request)?;
     debug!(status = ?output.status, "parsed agent output");
     Ok(output)
+}
+
+/// Execute the agent and load its output as JSON of type `T`.
+#[instrument(skip_all, fields(output_path = %request.output_path.display()))]
+pub fn execute_and_load_json<E: Executor, T: DeserializeOwned>(
+    executor: &E,
+    request: &ExecRequest,
+) -> Result<T> {
+    executor.exec(request)?;
+    ensure_output_exists(&request.output_path)?;
+    read_output_json(&request.output_path)
 }
 
 fn ensure_output_exists(path: &Path) -> Result<()> {
@@ -129,12 +139,12 @@ fn ensure_output_exists(path: &Path) -> Result<()> {
     Ok(())
 }
 
-fn read_agent_output(path: &Path) -> Result<AgentOutput> {
+fn read_output_json<T: DeserializeOwned>(path: &Path) -> Result<T> {
     let contents = fs::read_to_string(path)
         .with_context(|| format!("read agent output {}", path.display()))?;
-    let output = serde_json::from_str(&contents)
-        .with_context(|| format!("parse agent output {}", path.display()))?;
-    Ok(output)
+    let value =
+        serde_json::from_str(&contents).with_context(|| format!("parse {}", path.display()))?;
+    Ok(value)
 }
 
 fn write_executor_log(path: &Path, output: &CommandOutput, output_limit: usize) -> Result<()> {
