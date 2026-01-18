@@ -6,15 +6,18 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, anyhow};
 
+use crate::core::child_additions::validate_child_additions_restricted;
 use crate::core::immutability::check_passed_node_immutability;
 use crate::core::path::node_path;
 use crate::core::selector::{is_stuck, leftmost_open_leaf};
 use crate::core::state_update::apply_state_updates;
 use crate::core::status_validator::validate_status_invariants;
-use crate::core::types::{AgentOutput, AgentStatus, GuardOutcome};
+use crate::core::types::{
+    AgentOutput, AgentStatus, GuardOutcome, TreeChildSpec, TreeDecision, TreeDecisionKind,
+};
 use crate::io::config::load_config;
 use crate::io::context::{ContextPayload, write_context};
-use crate::io::executor::{ExecRequest, Executor, execute_and_load};
+use crate::io::executor::{ExecRequest, Executor, execute_and_load, execute_and_load_json};
 use crate::io::git::Git;
 use crate::io::goal::read_goal_id;
 use crate::io::guards::{GuardRequest, GuardRunner, run_guards_if_needed};
@@ -24,7 +27,8 @@ use crate::io::run_state::{RunState, load_run_state, write_run_state};
 use crate::io::tree_store::{load_tree, write_tree};
 use crate::tree::Node;
 
-const AGENT_OUTPUT_SCHEMA: &str = include_str!("../schemas/agent_output.schema.json");
+const TREE_DECISION_SCHEMA: &str = include_str!("../schemas/tree_decision.schema.json");
+const EXECUTOR_OUTPUT_SCHEMA: &str = include_str!("../schemas/executor_output.schema.json");
 
 /// Configuration for a single step iteration.
 #[derive(Debug, Clone)]
@@ -115,7 +119,8 @@ pub fn run_step<E: Executor, G: GuardRunner>(
     let tree_path = state_dir.join("tree.json");
     let schema_path = state_dir.join("schema.json");
     let run_state_path = state_dir.join("run_state.json");
-    let output_schema_path = state_dir.join("agent_output.schema.json");
+    let tree_decision_schema_path = state_dir.join("tree_decision.schema.json");
+    let executor_output_schema_path = state_dir.join("executor_output.schema.json");
     let config_path = state_dir.join("config.toml");
     let cfg = load_config(&config_path)?;
     let deadline = start + Duration::from_secs(cfg.iteration_timeout_secs);
@@ -172,7 +177,8 @@ pub fn run_step<E: Executor, G: GuardRunner>(
     let tree_summary = summarize_tree(&prev_tree, 200);
     let prompt_inputs =
         PromptInputs::from_root(root, selected_path, selected.to_owned(), tree_summary)?;
-    let prompt_pack = PromptBuilder::new(config.prompt_budget_bytes).build(&prompt_inputs);
+    let prompt_builder = PromptBuilder::new(config.prompt_budget_bytes);
+    let tree_agent_prompt = prompt_builder.build_tree_agent(&prompt_inputs).render();
 
     let iter_dir = root
         .join(".runner")
@@ -185,80 +191,182 @@ pub fn run_step<E: Executor, G: GuardRunner>(
     let guard_log_path = iter_dir.join("guard.log");
     let runner_error_log_path = iter_dir.join("runner_error.log");
 
-    let attempt = (|| -> Result<(AgentOutput, GuardOutcome, Node)> {
-        write_output_schema(&output_schema_path)?;
-        let exec_timeout = remaining_budget(deadline)?;
+    let attempt = (|| -> Result<(AgentOutput, GuardOutcome, Node, Option<String>)> {
+        write_schema(&tree_decision_schema_path, TREE_DECISION_SCHEMA)?;
+        write_schema(&executor_output_schema_path, EXECUTOR_OUTPUT_SCHEMA)?;
 
-        let exec_request = ExecRequest {
+        // Phase 1: tree agent decides whether to decompose or execute.
+        let planner_timeout = remaining_budget(deadline)?;
+        let planner_request = ExecRequest {
             workdir: root.to_path_buf(),
-            prompt: prompt_pack.render(),
-            output_schema_path: output_schema_path.clone(),
-            output_path: iter_dir.join("output.json"),
-            executor_log_path: iter_dir.join("executor.log"),
-            timeout: exec_timeout,
+            prompt: tree_agent_prompt.clone(),
+            output_schema_path: tree_decision_schema_path.clone(),
+            output_path: iter_dir.join("planner_output.json"),
+            executor_log_path: iter_dir.join("planner_executor.log"),
+            timeout: planner_timeout,
             output_limit_bytes: cfg.executor_output_limit_bytes,
-            stream_path: Some(iter_dir.join("stream.jsonl")),
+            stream_path: Some(iter_dir.join("planner_stream.jsonl")),
         };
+        let tree_decision: TreeDecision = execute_and_load_json(executor, &planner_request)?;
 
-        let output = execute_and_load(executor, &exec_request)?;
+        match tree_decision.decision {
+            TreeDecisionKind::Decompose => {
+                if tree_decision.children.is_empty() {
+                    let msg =
+                        "tree agent returned decision=decompose but children is empty".to_string();
+                    let (output, tree_after) =
+                        apply_agent_retry(&prev_tree, &selected_id, msg.clone())?;
+                    write_tree(&tree_path, &tree_after)?;
+                    return Ok((output, GuardOutcome::Skipped, tree_after, Some(msg)));
+                }
 
-        let next_tree = load_tree(&schema_path, &tree_path)?;
-        validate_post_exec_tree(&prev_tree, &next_tree)?;
-        validate_status(&prev_tree, &next_tree, &selected_id, output.status)?;
+                let next_tree = decompose_tree(
+                    &prev_tree,
+                    &selected_id,
+                    &tree_decision.children,
+                    cfg.max_attempts_default,
+                )?;
 
-        let guard_outcome = if output.status == AgentStatus::Done {
-            // Guards only run when the agent claims completion, and they receive the remaining
-            // budget from the per-iteration timeout.
-            let guard_timeout = remaining_budget(deadline)?;
-            run_guards_if_needed(
-                output.status,
-                guard_runner,
-                &GuardRequest {
+                // Sanity-check: decomposition must not introduce children elsewhere.
+                let errors =
+                    validate_child_additions_restricted(&prev_tree, &next_tree, Some(&selected_id));
+                if !errors.is_empty() {
+                    return Err(anyhow!(
+                        "child-additions restriction failed after decomposition: {}",
+                        errors.join("; ")
+                    ));
+                }
+
+                validate_post_exec_tree(&prev_tree, &next_tree)?;
+                validate_status(
+                    &prev_tree,
+                    &next_tree,
+                    &selected_id,
+                    AgentStatus::Decomposed,
+                )?;
+
+                let output = AgentOutput {
+                    status: AgentStatus::Decomposed,
+                    summary: tree_decision.summary,
+                };
+                let guard_outcome = GuardOutcome::Skipped;
+
+                let mut updated_tree = next_tree.clone();
+                apply_state_updates(
+                    &prev_tree,
+                    &mut updated_tree,
+                    &selected_id,
+                    output.status,
+                    guard_outcome,
+                )
+                .map_err(|err| anyhow!("state update failed: {err}"))?;
+                write_tree(&tree_path, &updated_tree)?;
+
+                Ok((output, guard_outcome, updated_tree, None))
+            }
+            TreeDecisionKind::Execute => {
+                // Phase 2: executor agent performs work for the selected node.
+                let executor_prompt = prompt_builder
+                    .build_executor(&prompt_inputs, Some(tree_decision.summary.as_str()))
+                    .render();
+                let exec_timeout = remaining_budget(deadline)?;
+                let exec_request = ExecRequest {
                     workdir: root.to_path_buf(),
-                    log_path: guard_log_path.clone(),
-                    timeout: guard_timeout,
-                    output_limit_bytes: cfg.guard_output_limit_bytes,
-                },
-            )?
-        } else {
-            GuardOutcome::Skipped
-        };
+                    prompt: executor_prompt,
+                    output_schema_path: executor_output_schema_path.clone(),
+                    output_path: iter_dir.join("output.json"),
+                    executor_log_path: iter_dir.join("executor.log"),
+                    timeout: exec_timeout,
+                    output_limit_bytes: cfg.executor_output_limit_bytes,
+                    stream_path: Some(iter_dir.join("stream.jsonl")),
+                };
 
-        let mut updated_tree = next_tree.clone();
-        apply_state_updates(
-            &prev_tree,
-            &mut updated_tree,
-            &selected_id,
-            output.status,
-            guard_outcome,
-        )
-        .map_err(|err| anyhow!("state update failed: {err}"))?;
-        write_tree(&tree_path, &updated_tree)?;
+                let output = execute_and_load(executor, &exec_request)?;
 
-        Ok((output, guard_outcome, updated_tree))
+                let next_tree = match load_tree(&schema_path, &tree_path) {
+                    Ok(tree) => tree,
+                    Err(err) => {
+                        let msg = format!("tree invalid after executor: {err}");
+                        let (output, tree_after) =
+                            apply_agent_retry(&prev_tree, &selected_id, msg.clone())?;
+                        write_tree(&tree_path, &tree_after)?;
+                        return Ok((output, GuardOutcome::Skipped, tree_after, Some(msg)));
+                    }
+                };
+
+                // Treat post-exec tree violations as agent contract errors (retry with context),
+                // rather than hard-stopping the loop.
+                let mut contract_errors = Vec::new();
+                contract_errors.extend(check_passed_node_immutability(&prev_tree, &next_tree));
+                contract_errors.extend(validate_child_additions_restricted(
+                    &prev_tree, &next_tree, None,
+                ));
+                contract_errors.extend(validate_status_invariants(
+                    &prev_tree,
+                    &next_tree,
+                    &selected_id,
+                    output.status,
+                ));
+                if !contract_errors.is_empty() {
+                    contract_errors.sort();
+                    let msg = format!("agent contract violation: {}", contract_errors.join("; "));
+                    let (output, tree_after) =
+                        apply_agent_retry(&prev_tree, &selected_id, msg.clone())?;
+                    write_tree(&tree_path, &tree_after)?;
+                    return Ok((output, GuardOutcome::Skipped, tree_after, Some(msg)));
+                }
+
+                let guard_outcome = if output.status == AgentStatus::Done {
+                    // Guards only run when the agent claims completion, and they receive the remaining
+                    // budget from the per-iteration timeout.
+                    let guard_timeout = remaining_budget(deadline)?;
+                    run_guards_if_needed(
+                        output.status,
+                        guard_runner,
+                        &GuardRequest {
+                            workdir: root.to_path_buf(),
+                            log_path: guard_log_path.clone(),
+                            timeout: guard_timeout,
+                            output_limit_bytes: cfg.guard_output_limit_bytes,
+                        },
+                    )?
+                } else {
+                    GuardOutcome::Skipped
+                };
+
+                let mut updated_tree = next_tree.clone();
+                apply_state_updates(
+                    &prev_tree,
+                    &mut updated_tree,
+                    &selected_id,
+                    output.status,
+                    guard_outcome,
+                )
+                .map_err(|err| anyhow!("state update failed: {err}"))?;
+                write_tree(&tree_path, &updated_tree)?;
+
+                Ok((output, guard_outcome, updated_tree, None))
+            }
+        }
     })();
 
     let output: AgentOutput;
     let guard_outcome: GuardOutcome;
     let tree_after: Node;
+    let runner_error_log: Option<String>;
     let mut step_error: Option<anyhow::Error> = None;
 
     match attempt {
-        Ok((out, guard, tree)) => {
+        Ok((out, guard, tree, err_log)) => {
             output = out;
             guard_outcome = guard;
             tree_after = tree;
+            runner_error_log = err_log;
         }
         Err(err) => {
             step_error = Some(err);
 
-            let err_msg = format!("runner error: {}", step_error.as_ref().unwrap());
-            if let Some(parent) = runner_error_log_path.parent() {
-                fs::create_dir_all(parent)
-                    .with_context(|| format!("create {}", parent.display()))?;
-            }
-            fs::write(&runner_error_log_path, format!("{err_msg}\n"))
-                .with_context(|| format!("write {}", runner_error_log_path.display()))?;
+            runner_error_log = Some(format!("runner error: {}", step_error.as_ref().unwrap()));
 
             output = AgentOutput {
                 status: AgentStatus::Retry,
@@ -271,6 +379,14 @@ pub fn run_step<E: Executor, G: GuardRunner>(
 
             write_tree(&tree_path, &tree_after)?;
         }
+    }
+
+    if let Some(contents) = &runner_error_log {
+        if let Some(parent) = runner_error_log_path.parent() {
+            fs::create_dir_all(parent).with_context(|| format!("create {}", parent.display()))?;
+        }
+        fs::write(&runner_error_log_path, format!("{contents}\n"))
+            .with_context(|| format!("write {}", runner_error_log_path.display()))?;
     }
 
     let guard_log = fs::read_to_string(&guard_log_path).ok();
@@ -437,13 +553,12 @@ fn commit_iteration(
     Ok(())
 }
 
-fn write_output_schema(path: &Path) -> Result<()> {
+fn write_schema(path: &Path, contents: &str) -> Result<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)
-            .with_context(|| format!("create output schema dir {}", parent.display()))?;
+            .with_context(|| format!("create schema dir {}", parent.display()))?;
     }
-    fs::write(path, AGENT_OUTPUT_SCHEMA)
-        .with_context(|| format!("write output schema {}", path.display()))
+    fs::write(path, contents).with_context(|| format!("write schema {}", path.display()))
 }
 
 fn validate_post_exec_tree(prev: &Node, next: &Node) -> Result<()> {
@@ -460,6 +575,93 @@ fn validate_status(prev: &Node, next: &Node, selected_id: &str, status: AgentSta
         return Ok(());
     }
     Err(anyhow!("status invariants failed: {}", errors.join("; ")))
+}
+
+fn apply_agent_retry(
+    prev_tree: &Node,
+    selected_id: &str,
+    summary: String,
+) -> Result<(AgentOutput, Node)> {
+    let output = AgentOutput {
+        status: AgentStatus::Retry,
+        summary,
+    };
+    let guard_outcome = GuardOutcome::Skipped;
+
+    let mut updated_tree = prev_tree.clone();
+    apply_state_updates(
+        prev_tree,
+        &mut updated_tree,
+        selected_id,
+        output.status,
+        guard_outcome,
+    )
+    .map_err(|err| anyhow!("state update failed: {err}"))?;
+    Ok((output, updated_tree))
+}
+
+fn decompose_tree(
+    prev_tree: &Node,
+    selected_id: &str,
+    children: &[TreeChildSpec],
+    max_attempts_default: u32,
+) -> Result<Node> {
+    let mut used_ids = std::collections::HashSet::new();
+    collect_ids(prev_tree, &mut used_ids);
+
+    let mut next_tree = prev_tree.clone();
+    let selected = find_node_mut(&mut next_tree, selected_id)
+        .ok_or_else(|| anyhow!("selected node '{}' not found in tree", selected_id))?;
+
+    for (idx, child) in children.iter().enumerate() {
+        let id = allocate_child_id(selected_id, &used_ids);
+        used_ids.insert(id.clone());
+
+        selected.children.push(Node {
+            id,
+            order: idx as i64,
+            title: child.title.clone(),
+            goal: child.goal.clone(),
+            acceptance: child.acceptance.clone(),
+            passes: false,
+            attempts: 0,
+            max_attempts: max_attempts_default,
+            children: Vec::new(),
+        });
+    }
+
+    next_tree.sort_children();
+    Ok(next_tree)
+}
+
+fn allocate_child_id(parent_id: &str, used_ids: &std::collections::HashSet<String>) -> String {
+    // Deterministic: lowest available numeric suffix wins.
+    for n in 1u32.. {
+        let id = format!("{parent_id}.{n}");
+        if !used_ids.contains(&id) {
+            return id;
+        }
+    }
+    unreachable!("u32 iterator is infinite")
+}
+
+fn collect_ids(node: &Node, out: &mut std::collections::HashSet<String>) {
+    out.insert(node.id.clone());
+    for child in &node.children {
+        collect_ids(child, out);
+    }
+}
+
+fn find_node_mut<'a>(node: &'a mut Node, target_id: &str) -> Option<&'a mut Node> {
+    if node.id == target_id {
+        return Some(node);
+    }
+    for child in &mut node.children {
+        if let Some(found) = find_node_mut(child, target_id) {
+            return Some(found);
+        }
+    }
+    None
 }
 
 fn render_goal(node: &Node) -> String {
@@ -531,14 +733,13 @@ fn summarize_tree_inner(node: &Node, depth: usize, max_nodes: usize, lines: &mut
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::types::AgentOutput;
+    use crate::core::types::{AgentOutput, TreeChildSpec, TreeDecision, TreeDecisionKind};
     use crate::io::git::Git;
     use crate::io::guards::GuardRunner;
     use crate::test_support::{
-        ScriptedExec, ScriptedExecutor, ScriptedGuard, ScriptedGuardRunner, TestRepo,
-        load_tree_fixture,
+        ScriptedExec, ScriptedExecutor, ScriptedGuard, ScriptedGuardRunner, ScriptedOutput,
+        TestRepo, load_tree_fixture,
     };
-    use crate::tree::default_tree;
 
     /// Verifies a retry iteration updates run_state and writes iteration logs.
     ///
@@ -553,13 +754,23 @@ mod tests {
         let root = repo.root();
         repo.start_run().expect("start");
 
-        let executor = ScriptedExecutor::new(vec![ScriptedExec {
-            output: AgentOutput {
-                status: AgentStatus::Retry,
-                summary: "needs more".to_string(),
+        let executor = ScriptedExecutor::new(vec![
+            ScriptedExec {
+                output: ScriptedOutput::TreeDecision(TreeDecision {
+                    decision: TreeDecisionKind::Execute,
+                    summary: "execute".to_string(),
+                    children: Vec::new(),
+                }),
+                tree_update: None,
             },
-            tree_update: None,
-        }]);
+            ScriptedExec {
+                output: ScriptedOutput::AgentOutput(AgentOutput {
+                    status: AgentStatus::Retry,
+                    summary: "needs more".to_string(),
+                }),
+                tree_update: None,
+            },
+        ]);
         let guard_runner = ScriptedGuardRunner::new(vec![ScriptedGuard {
             outcome: GuardOutcome::Pass,
             log: "guard output".to_string(),
@@ -601,13 +812,23 @@ mod tests {
         let root = repo.root();
         repo.start_run().expect("start");
 
-        let executor = ScriptedExecutor::new(vec![ScriptedExec {
-            output: AgentOutput {
-                status: AgentStatus::Done,
-                summary: "done".to_string(),
+        let executor = ScriptedExecutor::new(vec![
+            ScriptedExec {
+                output: ScriptedOutput::TreeDecision(TreeDecision {
+                    decision: TreeDecisionKind::Execute,
+                    summary: "execute".to_string(),
+                    children: Vec::new(),
+                }),
+                tree_update: None,
             },
-            tree_update: None,
-        }]);
+            ScriptedExec {
+                output: ScriptedOutput::AgentOutput(AgentOutput {
+                    status: AgentStatus::Done,
+                    summary: "done".to_string(),
+                }),
+                tree_update: None,
+            },
+        ]);
         let guard_runner = ScriptedGuardRunner::new(vec![ScriptedGuard {
             outcome: GuardOutcome::Pass,
             log: "guard output".to_string(),
@@ -651,17 +872,33 @@ mod tests {
 
         let executor = ScriptedExecutor::new(vec![
             ScriptedExec {
-                output: AgentOutput {
-                    status: AgentStatus::Done,
-                    summary: "done".to_string(),
-                },
+                output: ScriptedOutput::TreeDecision(TreeDecision {
+                    decision: TreeDecisionKind::Execute,
+                    summary: "execute".to_string(),
+                    children: Vec::new(),
+                }),
                 tree_update: None,
             },
             ScriptedExec {
-                output: AgentOutput {
+                output: ScriptedOutput::AgentOutput(AgentOutput {
+                    status: AgentStatus::Done,
+                    summary: "done".to_string(),
+                }),
+                tree_update: None,
+            },
+            ScriptedExec {
+                output: ScriptedOutput::TreeDecision(TreeDecision {
+                    decision: TreeDecisionKind::Execute,
+                    summary: "execute".to_string(),
+                    children: Vec::new(),
+                }),
+                tree_update: None,
+            },
+            ScriptedExec {
+                output: ScriptedOutput::AgentOutput(AgentOutput {
                     status: AgentStatus::Retry,
                     summary: "retry".to_string(),
-                },
+                }),
                 tree_update: None,
             },
         ]);
@@ -702,17 +939,33 @@ mod tests {
 
         let executor = ScriptedExecutor::new(vec![
             ScriptedExec {
-                output: AgentOutput {
-                    status: AgentStatus::Done,
-                    summary: "ignored".to_string(),
-                },
+                output: ScriptedOutput::TreeDecision(TreeDecision {
+                    decision: TreeDecisionKind::Execute,
+                    summary: "execute".to_string(),
+                    children: Vec::new(),
+                }),
                 tree_update: None,
             },
             ScriptedExec {
-                output: AgentOutput {
+                output: ScriptedOutput::AgentOutput(AgentOutput {
+                    status: AgentStatus::Done,
+                    summary: "ignored".to_string(),
+                }),
+                tree_update: None,
+            },
+            ScriptedExec {
+                output: ScriptedOutput::TreeDecision(TreeDecision {
+                    decision: TreeDecisionKind::Execute,
+                    summary: "execute".to_string(),
+                    children: Vec::new(),
+                }),
+                tree_update: None,
+            },
+            ScriptedExec {
+                output: ScriptedOutput::AgentOutput(AgentOutput {
                     status: AgentStatus::Retry,
                     summary: "needs work".to_string(),
-                },
+                }),
                 tree_update: None,
             },
         ]);
@@ -772,17 +1025,17 @@ mod tests {
         let root = repo.root();
         repo.start_run().expect("start");
 
-        let mut decomposed = default_tree();
-        decomposed
-            .children
-            .push(crate::test_support::node("child", 0));
-
         let executor = ScriptedExecutor::new(vec![ScriptedExec {
-            output: AgentOutput {
-                status: AgentStatus::Decomposed,
+            output: ScriptedOutput::TreeDecision(TreeDecision {
+                decision: TreeDecisionKind::Decompose,
                 summary: "split".to_string(),
-            },
-            tree_update: Some(decomposed),
+                children: vec![TreeChildSpec {
+                    title: "Child".to_string(),
+                    goal: "Do child work".to_string(),
+                    acceptance: Vec::new(),
+                }],
+            }),
+            tree_update: None,
         }]);
         let guard_runner = ScriptedGuardRunner::new(Vec::new());
 
@@ -815,17 +1068,33 @@ mod tests {
 
         let executor = ScriptedExecutor::new(vec![
             ScriptedExec {
-                output: AgentOutput {
-                    status: AgentStatus::Retry,
-                    summary: "needs more".to_string(),
-                },
+                output: ScriptedOutput::TreeDecision(TreeDecision {
+                    decision: TreeDecisionKind::Execute,
+                    summary: "execute".to_string(),
+                    children: Vec::new(),
+                }),
                 tree_update: None,
             },
             ScriptedExec {
-                output: AgentOutput {
+                output: ScriptedOutput::AgentOutput(AgentOutput {
+                    status: AgentStatus::Retry,
+                    summary: "needs more".to_string(),
+                }),
+                tree_update: None,
+            },
+            ScriptedExec {
+                output: ScriptedOutput::TreeDecision(TreeDecision {
+                    decision: TreeDecisionKind::Execute,
+                    summary: "execute".to_string(),
+                    children: Vec::new(),
+                }),
+                tree_update: None,
+            },
+            ScriptedExec {
+                output: ScriptedOutput::AgentOutput(AgentOutput {
                     status: AgentStatus::Done,
                     summary: "done".to_string(),
-                },
+                }),
                 tree_update: None,
             },
         ]);
@@ -909,9 +1178,9 @@ mod tests {
         assert!(guard_runner.last_request().is_none());
     }
 
-    /// Verifies decomposed status without children triggers a status invariant error.
+    /// Verifies the runner retries when the tree agent requests decomposition with no children.
     #[test]
-    fn step_errors_when_decomposed_without_children() {
+    fn step_retries_when_tree_agent_decomposes_without_children() {
         let repo = TestRepo::new().expect("repo");
         let root = repo.root();
         let start = repo.start_run().expect("start");
@@ -923,17 +1192,18 @@ mod tests {
         assert!(git.commit_staged("chore: fixture").expect("git commit"));
 
         let executor = ScriptedExecutor::new(vec![ScriptedExec {
-            output: AgentOutput {
-                status: AgentStatus::Decomposed,
+            output: ScriptedOutput::TreeDecision(TreeDecision {
+                decision: TreeDecisionKind::Decompose,
                 summary: "missing children".to_string(),
-            },
+                children: Vec::new(),
+            }),
             tree_update: None,
         }]);
         let guard_runner = ScriptedGuardRunner::new(Vec::new());
 
-        let err =
-            run_step(root, &executor, &guard_runner, &StepConfig::default()).expect_err("step");
-        assert!(err.to_string().contains("status=decomposed"));
+        let outcome =
+            run_step(root, &executor, &guard_runner, &StepConfig::default()).expect("step");
+        assert_eq!(outcome.status, AgentStatus::Retry);
 
         let iter_dir = root
             .join(".runner/iterations")
@@ -941,7 +1211,7 @@ mod tests {
             .join("1");
         let runner_error =
             fs::read_to_string(iter_dir.join("runner_error.log")).expect("read runner_error.log");
-        assert!(runner_error.contains("status=decomposed"));
+        assert!(runner_error.contains("decision=decompose"));
 
         guard_runner.assert_drained().expect("guard drained");
         executor.assert_drained().expect("executor drained");
@@ -965,21 +1235,34 @@ mod tests {
             passed_node.title = "mutated".to_string();
         }
 
-        let executor = ScriptedExecutor::new(vec![ScriptedExec {
-            output: AgentOutput {
-                status: AgentStatus::Retry,
-                summary: "retry".to_string(),
+        let executor = ScriptedExecutor::new(vec![
+            ScriptedExec {
+                output: ScriptedOutput::TreeDecision(TreeDecision {
+                    decision: TreeDecisionKind::Execute,
+                    summary: "execute".to_string(),
+                    children: Vec::new(),
+                }),
+                tree_update: None,
             },
-            tree_update: Some(mutated),
-        }]);
+            ScriptedExec {
+                output: ScriptedOutput::AgentOutput(AgentOutput {
+                    status: AgentStatus::Retry,
+                    summary: "retry".to_string(),
+                }),
+                tree_update: Some(mutated),
+            },
+        ]);
         let guard_runner = ScriptedGuardRunner::new(Vec::new());
 
-        let err =
-            run_step(root, &executor, &guard_runner, &StepConfig::default()).expect_err("step");
-        assert!(err.to_string().contains("immutability failed"));
+        let outcome =
+            run_step(root, &executor, &guard_runner, &StepConfig::default()).expect("step");
+        assert_eq!(outcome.status, AgentStatus::Retry);
 
         let stored = repo.read_tree().expect("read tree");
-        assert_eq!(stored, fixture);
+        assert_eq!(stored.children[0].id, "done");
+        assert_eq!(stored.children[0].title, "Done node");
+        assert_eq!(stored.children[1].id, "open");
+        assert_eq!(stored.children[1].attempts, 1);
 
         let iter_dir = root
             .join(".runner/iterations")
@@ -987,7 +1270,7 @@ mod tests {
             .join("1");
         let runner_error =
             fs::read_to_string(iter_dir.join("runner_error.log")).expect("read runner_error.log");
-        assert!(runner_error.contains("immutability"));
+        assert!(runner_error.contains("passed node 'done' changed"));
 
         guard_runner.assert_drained().expect("guard drained");
         executor.assert_drained().expect("executor drained");
