@@ -5,8 +5,10 @@
   import IterationList from './lib/IterationList.svelte';
   import IterationDetail from './lib/IterationDetail.svelte';
   import ConnectionStatus from './lib/ConnectionStatus.svelte';
-  import { tree, runState, runs, selectedNode, selectedIteration, loading, error } from './lib/stores';
-  import { fetchTree, fetchRunState, fetchIterations } from './lib/api';
+  import ConfigPanel from './lib/ConfigPanel.svelte';
+  import DocsPanel from './lib/DocsPanel.svelte';
+  import { tree, runState, runs, selectedNode, selectedIteration, loading, error, config, assumptions, questions, activeTab, type ActiveTab } from './lib/stores';
+  import { fetchTree, fetchRunState, fetchIterations, fetchConfig, fetchAssumptions, fetchQuestions } from './lib/api';
   import { connect, disconnect, subscribe } from './lib/sse';
 
   // Load initial data
@@ -15,15 +17,21 @@
     error.set(null);
 
     try {
-      const [treeData, runStateData, iterationsData] = await Promise.all([
+      const [treeData, runStateData, iterationsData, configData, assumptionsData, questionsData] = await Promise.all([
         fetchTree().catch(() => null),
         fetchRunState().catch(() => null),
         fetchIterations().catch(() => ({ runs: [] })),
+        fetchConfig().catch(() => null),
+        fetchAssumptions().catch(() => ''),
+        fetchQuestions().catch(() => ''),
       ]);
 
       if (treeData) tree.set(treeData);
       if (runStateData) runState.set(runStateData);
       runs.set(iterationsData.runs);
+      if (configData) config.set(configData);
+      assumptions.set(assumptionsData);
+      questions.set(questionsData);
     } catch (e) {
       error.set(e instanceof Error ? e.message : 'Failed to load data');
     } finally {
@@ -49,10 +57,42 @@
           .then((data) => runs.set(data.runs))
           .catch(console.error);
         break;
+      case 'config_changed':
+        fetchConfig()
+          .then((data) => config.set(data))
+          .catch(console.error);
+        break;
+      case 'assumptions_changed':
+        fetchAssumptions()
+          .then((data) => assumptions.set(data))
+          .catch(console.error);
+        break;
+      case 'questions_changed':
+        fetchQuestions()
+          .then((data) => questions.set(data))
+          .catch(console.error);
+        break;
     }
   }
 
   let unsubscribe: (() => void) | null = null;
+
+  function setTab(tab: ActiveTab) {
+    activeTab.set(tab);
+  }
+
+  // When selecting a node or iteration, switch to appropriate tab
+  $effect(() => {
+    if ($selectedIteration) {
+      activeTab.set('iteration');
+    }
+  });
+
+  $effect(() => {
+    if ($selectedNode && !$selectedIteration) {
+      activeTab.set('node');
+    }
+  });
 
   onMount(() => {
     loadData();
@@ -101,22 +141,61 @@
           </div>
         </section>
 
-        <!-- Center panel: Node or Iteration detail -->
+        <!-- Center panel: Tabbed detail view -->
         <section class="panel detail-panel">
-          <div class="panel-header">
-            {#if $selectedIteration}
-              Iteration Detail
-            {:else}
-              Node Detail
-            {/if}
+          <div class="panel-header with-tabs">
+            <div class="tabs">
+              <button
+                class="tab"
+                class:active={$activeTab === 'node'}
+                onclick={() => setTab('node')}
+              >
+                Node
+              </button>
+              <button
+                class="tab"
+                class:active={$activeTab === 'iteration'}
+                onclick={() => setTab('iteration')}
+              >
+                Iteration
+              </button>
+              <button
+                class="tab"
+                class:active={$activeTab === 'config'}
+                onclick={() => setTab('config')}
+              >
+                Config
+              </button>
+              <button
+                class="tab"
+                class:active={$activeTab === 'docs'}
+                onclick={() => setTab('docs')}
+              >
+                Docs
+              </button>
+            </div>
           </div>
           <div class="panel-body">
-            {#if $selectedIteration}
-              <IterationDetail runId={$selectedIteration.run_id} iter={$selectedIteration.iter} />
-            {:else if $selectedNode}
-              <NodeDetail node={$selectedNode} />
-            {:else}
-              <div class="empty-state">Select a node or iteration</div>
+            {#if $activeTab === 'node'}
+              {#if $selectedNode}
+                <NodeDetail node={$selectedNode} />
+              {:else}
+                <div class="empty-state">Select a node from the tree</div>
+              {/if}
+            {:else if $activeTab === 'iteration'}
+              {#if $selectedIteration}
+                <IterationDetail runId={$selectedIteration.run_id} iter={$selectedIteration.iter} />
+              {:else}
+                <div class="empty-state">Select an iteration from the list</div>
+              {/if}
+            {:else if $activeTab === 'config'}
+              {#if $config}
+                <ConfigPanel config={$config} />
+              {:else}
+                <div class="empty-state">No config loaded</div>
+              {/if}
+            {:else if $activeTab === 'docs'}
+              <DocsPanel assumptions={$assumptions} questions={$questions} />
             {/if}
           </div>
         </section>
@@ -247,5 +326,38 @@
     height: 100%;
     color: #94a3b8;
     font-size: 0.875rem;
+  }
+
+  .panel-header.with-tabs {
+    padding: 0;
+  }
+
+  .tabs {
+    display: flex;
+    gap: 0;
+  }
+
+  .tab {
+    padding: 0.75rem 1rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #64748b;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .tab:hover {
+    color: #1e293b;
+    background-color: #f8fafc;
+  }
+
+  .tab.active {
+    color: #3b82f6;
+    border-bottom-color: #3b82f6;
   }
 </style>

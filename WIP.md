@@ -15,6 +15,7 @@
 - Completed `.plan/7` (evaluation framework: eval crate, cases, harness, reporting).
 - Recorded Codex integration decision: keep `codex exec`; use `--json` for streaming if needed; defer `app-server`/`mcp-server`.
 - Implemented `runner-ui` crate: read-only web UI for monitoring runner state (axum backend + Svelte frontend).
+- Extended runner-ui to expose state files (config.toml, assumptions.md, questions.md) via tabbed center panel.
 
 ## Next
 

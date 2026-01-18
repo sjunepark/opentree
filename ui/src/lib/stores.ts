@@ -42,6 +42,17 @@ export interface RunEntry {
   iterations: number[];
 }
 
+export interface RunnerConfig {
+  max_iterations?: number;
+  max_attempts_default?: number;
+  iteration_timeout_secs?: number;
+  iteration_output_limit?: number;
+  guard_command?: string;
+  [key: string]: unknown;
+}
+
+export type ActiveTab = 'node' | 'iteration' | 'config' | 'docs';
+
 // Stores
 export const tree: Writable<Node | null> = writable(null);
 export const runState: Writable<RunState | null> = writable(null);
@@ -51,3 +62,7 @@ export const selectedIteration: Writable<{ run_id: string; iter: number } | null
 export const sseConnected: Writable<boolean> = writable(false);
 export const loading: Writable<boolean> = writable(true);
 export const error: Writable<string | null> = writable(null);
+export const config: Writable<RunnerConfig | null> = writable(null);
+export const assumptions: Writable<string> = writable('');
+export const questions: Writable<string> = writable('');
+export const activeTab: Writable<ActiveTab> = writable('node');

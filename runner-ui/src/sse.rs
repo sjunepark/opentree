@@ -42,6 +42,21 @@ impl From<&ChangeEvent> for SsePayload {
                 run_id: Some(run_id.clone()),
                 iter: Some(*iter),
             },
+            ChangeEvent::ConfigChanged => SsePayload {
+                event_type: "config_changed".to_string(),
+                run_id: None,
+                iter: None,
+            },
+            ChangeEvent::AssumptionsChanged => SsePayload {
+                event_type: "assumptions_changed".to_string(),
+                run_id: None,
+                iter: None,
+            },
+            ChangeEvent::QuestionsChanged => SsePayload {
+                event_type: "questions_changed".to_string(),
+                run_id: None,
+                iter: None,
+            },
         }
     }
 }
@@ -154,10 +169,16 @@ fn process_events(
 ) {
     let mut tree_changed = false;
     let mut run_state_changed = false;
+    let mut config_changed = false;
+    let mut assumptions_changed = false;
+    let mut questions_changed = false;
     let mut new_iterations: Vec<(String, u32)> = Vec::new();
 
     let tree_path = state.tree_path();
     let run_state_path = state.run_state_path();
+    let config_path = state.config_path();
+    let assumptions_path = state.assumptions_path();
+    let questions_path = state.questions_path();
     let iter_dir = state.iterations_dir();
 
     for event in events {
@@ -171,6 +192,12 @@ fn process_events(
                 tree_changed = true;
             } else if path == &run_state_path {
                 run_state_changed = true;
+            } else if path == &config_path {
+                config_changed = true;
+            } else if path == &assumptions_path {
+                assumptions_changed = true;
+            } else if path == &questions_path {
+                questions_changed = true;
             } else if path.starts_with(&iter_dir) {
                 // Check if this is a new iteration directory
                 if let Some((run_id, iter)) = parse_iteration_path(&iter_dir, path)
@@ -191,6 +218,18 @@ fn process_events(
     if run_state_changed {
         debug!("broadcasting run state change");
         let _ = state.event_tx.send(ChangeEvent::RunStateChanged);
+    }
+    if config_changed {
+        debug!("broadcasting config change");
+        let _ = state.event_tx.send(ChangeEvent::ConfigChanged);
+    }
+    if assumptions_changed {
+        debug!("broadcasting assumptions change");
+        let _ = state.event_tx.send(ChangeEvent::AssumptionsChanged);
+    }
+    if questions_changed {
+        debug!("broadcasting questions change");
+        let _ = state.event_tx.send(ChangeEvent::QuestionsChanged);
     }
     for (run_id, iter) in new_iterations {
         debug!(run_id = %run_id, iter = iter, "broadcasting new iteration");

@@ -18,6 +18,9 @@ pub fn api_router() -> Router<AppState> {
         .route("/health", get(health))
         .route("/tree", get(get_tree))
         .route("/run-state", get(get_run_state))
+        .route("/config", get(get_config))
+        .route("/assumptions", get(get_assumptions))
+        .route("/questions", get(get_questions))
         .route("/iterations", get(list_iterations))
         .route("/iterations/{run_id}/{iter}", get(get_iteration))
         .route("/iterations/{run_id}/{iter}/guard.log", get(get_guard_log))
@@ -37,6 +40,54 @@ async fn get_tree(State(state): State<AppState>) -> Result<Json<Value>, StatusCo
 async fn get_run_state(State(state): State<AppState>) -> Result<Json<Value>, StatusCode> {
     let path = state.run_state_path();
     read_json_file(&path)
+}
+
+/// GET /api/config - returns config.toml as JSON.
+async fn get_config(State(state): State<AppState>) -> Result<Json<Value>, StatusCode> {
+    let path = state.config_path();
+    if !path.exists() {
+        return Err(StatusCode::NOT_FOUND);
+    }
+    let contents = fs::read_to_string(&path).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let toml_value: toml::Value =
+        toml::from_str(&contents).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let json_value = toml_to_json(toml_value);
+    Ok(Json(json_value))
+}
+
+/// GET /api/assumptions - returns assumptions.md content.
+async fn get_assumptions(State(state): State<AppState>) -> Result<String, StatusCode> {
+    let path = state.assumptions_path();
+    if !path.exists() {
+        return Ok(String::new());
+    }
+    fs::read_to_string(&path).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+/// GET /api/questions - returns questions.md content.
+async fn get_questions(State(state): State<AppState>) -> Result<String, StatusCode> {
+    let path = state.questions_path();
+    if !path.exists() {
+        return Ok(String::new());
+    }
+    fs::read_to_string(&path).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+/// Convert a TOML value to a JSON value.
+fn toml_to_json(toml_val: toml::Value) -> Value {
+    match toml_val {
+        toml::Value::String(s) => Value::String(s),
+        toml::Value::Integer(i) => Value::Number(i.into()),
+        toml::Value::Float(f) => {
+            serde_json::Number::from_f64(f).map_or(Value::Null, Value::Number)
+        }
+        toml::Value::Boolean(b) => Value::Bool(b),
+        toml::Value::Datetime(dt) => Value::String(dt.to_string()),
+        toml::Value::Array(arr) => Value::Array(arr.into_iter().map(toml_to_json).collect()),
+        toml::Value::Table(table) => {
+            Value::Object(table.into_iter().map(|(k, v)| (k, toml_to_json(v))).collect())
+        }
+    }
 }
 
 #[derive(Serialize)]

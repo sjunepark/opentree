@@ -1,4 +1,4 @@
-import type { Node, RunState, RunEntry, IterationMeta, AgentOutput } from './stores';
+import type { Node, RunState, RunEntry, IterationMeta, AgentOutput, RunnerConfig } from './stores';
 
 const API_BASE = '/api';
 
@@ -37,4 +37,24 @@ export async function fetchGuardLog(runId: string, iter: number): Promise<string
     throw new Error(`API error: ${response.status} ${response.statusText}`);
   }
   return response.text();
+}
+
+export async function fetchConfig(): Promise<RunnerConfig> {
+  return fetchJson<RunnerConfig>('/config');
+}
+
+async function fetchText(path: string): Promise<string> {
+  const response = await fetch(`${API_BASE}${path}`);
+  if (!response.ok) {
+    throw new Error(`API error: ${response.status} ${response.statusText}`);
+  }
+  return response.text();
+}
+
+export async function fetchAssumptions(): Promise<string> {
+  return fetchText('/assumptions');
+}
+
+export async function fetchQuestions(): Promise<string> {
+  return fetchText('/questions');
 }

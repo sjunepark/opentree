@@ -11,6 +11,9 @@ pub enum ChangeEvent {
     TreeChanged,
     RunStateChanged,
     IterationAdded { run_id: String, iter: u32 },
+    ConfigChanged,
+    AssumptionsChanged,
+    QuestionsChanged,
 }
 
 /// Shared state accessible from all request handlers.
@@ -49,5 +52,20 @@ impl AppState {
     /// Path to run_state.json.
     pub fn run_state_path(&self) -> PathBuf {
         self.state_dir().join("run_state.json")
+    }
+
+    /// Path to config.toml.
+    pub fn config_path(&self) -> PathBuf {
+        self.state_dir().join("config.toml")
+    }
+
+    /// Path to assumptions.md.
+    pub fn assumptions_path(&self) -> PathBuf {
+        self.state_dir().join("assumptions.md")
+    }
+
+    /// Path to questions.md.
+    pub fn questions_path(&self) -> PathBuf {
+        self.state_dir().join("questions.md")
     }
 }
