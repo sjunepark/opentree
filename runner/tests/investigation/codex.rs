@@ -115,8 +115,8 @@ fn output_last_message_writes_to_path() {
     let schema_dest = tmp.path().join("schema.json");
     copy_schema(&schema_dest);
 
-    // Use a nested path to verify parent directories are created
-    let output_path = tmp.path().join("nested/dir/output.json");
+    // Note: Codex CLI does NOT create parent directories for --output-last-message
+    let output_path = tmp.path().join("output.json");
 
     let mut child = Command::new("codex")
         .args([
@@ -137,10 +137,7 @@ fn output_last_message_writes_to_path() {
         .expect("codex timed out");
 
     assert!(status.success(), "codex exec failed");
-    assert!(
-        output_path.exists(),
-        "output file not created at nested path"
-    );
+    assert!(output_path.exists(), "output file not created");
 
     let content = fs::read_to_string(&output_path).expect("read output");
     assert!(!content.is_empty(), "output file is empty");
