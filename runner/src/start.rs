@@ -3,6 +3,7 @@
 use std::path::Path;
 
 use anyhow::{Context, Result, anyhow};
+use tracing::{debug, info};
 
 use crate::io::git::Git;
 use crate::io::goal::{ensure_goal_id, read_goal_id, validate_id};
@@ -23,6 +24,7 @@ pub struct StartOutcome {
 /// - Creates/checks out `runner/<run-id>` branch (allowed from `main`/`master`).
 /// - Commits runner bootstrap changes.
 pub fn start_run(root: &Path) -> Result<StartOutcome> {
+    debug!(root = %root.display(), "starting run");
     let git = Git::new(root);
 
     // Refuse to proceed if the repo has non-runner changes, to avoid committing user work
@@ -42,10 +44,15 @@ pub fn start_run(root: &Path) -> Result<StartOutcome> {
     };
     let run_id = match existing_goal_id {
         Some(id) => {
+            debug!(run_id = %id, "using existing goal id");
             validate_id(&id)?;
             id
         }
-        None => generate_run_id(&git)?,
+        None => {
+            let id = generate_run_id(&git)?;
+            info!(run_id = %id, "generated new run id");
+            id
+        }
     };
 
     let branch = format!("runner/{run_id}");
@@ -54,9 +61,11 @@ pub fn start_run(root: &Path) -> Result<StartOutcome> {
     let current = git.current_branch()?;
     if current != branch {
         if git.branch_exists(&branch)? {
+            debug!(branch = %branch, "checking out existing branch");
             git.checkout_branch(&branch)
                 .with_context(|| format!("checkout existing branch {branch}"))?;
         } else {
+            info!(branch = %branch, "creating new branch");
             git.checkout_new_branch(&branch)
                 .with_context(|| format!("create branch {branch}"))?;
         }
@@ -93,6 +102,7 @@ pub fn start_run(root: &Path) -> Result<StartOutcome> {
     git.add_all()?;
     let _committed = git.commit_staged(&format!("chore(loop): start run {run_id}"))?;
 
+    info!(run_id = %run_id, branch = %branch, "run started");
     Ok(StartOutcome { run_id, branch })
 }
 

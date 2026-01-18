@@ -6,6 +6,7 @@ use anyhow::{Context, Result};
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
+use tracing::{debug, info, instrument, warn};
 
 use crate::core::types::{AgentStatus, GuardOutcome};
 use crate::io::process::{CommandOutput, run_command_with_timeout};
@@ -47,7 +48,10 @@ impl CommandGuardRunner {
 }
 
 impl GuardRunner for CommandGuardRunner {
+    #[instrument(skip_all, fields(command = %self.command.join(" "), timeout_secs = request.timeout.as_secs()))]
     fn run(&self, request: &GuardRequest) -> Result<GuardOutcome> {
+        info!(workdir = %request.workdir.display(), "starting guard");
+
         let program = self
             .command
             .first()
@@ -65,11 +69,14 @@ impl GuardRunner for CommandGuardRunner {
         write_guard_log(&request.log_path, &output, request.output_limit_bytes)?;
 
         if output.timed_out {
+            warn!("guard timed out");
             return Ok(GuardOutcome::Fail);
         }
         if output.status.success() {
+            debug!("guard passed");
             Ok(GuardOutcome::Pass)
         } else {
+            debug!(exit_code = ?output.status.code(), "guard failed");
             Ok(GuardOutcome::Fail)
         }
     }

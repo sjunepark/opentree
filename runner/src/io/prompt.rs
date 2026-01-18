@@ -4,6 +4,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
+use tracing::debug;
 
 use crate::tree::Node;
 
@@ -227,7 +228,13 @@ fn apply_budget(sections: &mut Vec<PromptSection>, budget: usize) {
             break;
         }
         if let Some(idx) = sections.iter().position(|s| s.key == key) {
-            total = total.saturating_sub(sections[idx].render_len());
+            let dropped_len = sections[idx].render_len();
+            total = total.saturating_sub(dropped_len);
+            debug!(
+                section = key,
+                bytes_dropped = dropped_len,
+                "dropped section for budget"
+            );
             sections.remove(idx);
         }
     }
@@ -244,7 +251,14 @@ fn apply_budget(sections: &mut Vec<PromptSection>, budget: usize) {
         .map(|(_, s)| s.render_len())
         .sum();
     let allowed = budget.saturating_sub(other_len);
+    let before_len = sections[last_idx].render_len();
     sections[last_idx].truncate_to(allowed);
+    debug!(
+        section = sections[last_idx].key,
+        before_len,
+        after_len = allowed,
+        "truncated section for budget"
+    );
 }
 
 #[cfg(test)]

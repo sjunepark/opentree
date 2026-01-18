@@ -6,6 +6,7 @@ use std::thread;
 use std::time::Duration;
 
 use anyhow::{Context, Result, anyhow};
+use tracing::{debug, error, instrument, warn};
 use wait_timeout::ChildExt;
 
 /// Captured child process output.
@@ -47,6 +48,7 @@ impl CommandOutput {
 ///
 /// Output is read concurrently while the child runs. `output_limit_bytes` bounds the amount of
 /// stdout/stderr stored in memory (bytes beyond this are discarded while still draining the pipe).
+#[instrument(skip_all, fields(timeout_secs = timeout.as_secs(), output_limit_bytes))]
 pub fn run_command_with_timeout(
     mut cmd: Command,
     stdin: Option<&[u8]>,
@@ -60,7 +62,14 @@ pub fn run_command_with_timeout(
     }
     cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
 
-    let mut child = cmd.spawn().context("spawn command")?;
+    debug!("spawning child process");
+    let mut child = match cmd.spawn() {
+        Ok(c) => c,
+        Err(e) => {
+            error!(err = %e, "failed to spawn command");
+            return Err(e).context("spawn command");
+        }
+    };
 
     if let Some(input) = stdin {
         let mut child_stdin = child
@@ -86,6 +95,10 @@ pub fn run_command_with_timeout(
     let status = match child.wait_timeout(timeout).context("wait for command")? {
         Some(status) => status,
         None => {
+            warn!(
+                timeout_secs = timeout.as_secs(),
+                "command timed out, killing"
+            );
             timed_out = true;
             child.kill().context("kill command")?;
             child.wait().context("wait command after kill")?
@@ -95,6 +108,11 @@ pub fn run_command_with_timeout(
     let (stdout, stdout_truncated) = join_output(stdout_handle).context("join stdout")?;
     let (stderr, stderr_truncated) = join_output(stderr_handle).context("join stderr")?;
 
+    if stdout_truncated > 0 || stderr_truncated > 0 {
+        warn!(stdout_truncated, stderr_truncated, "output truncated");
+    }
+
+    debug!(exit_code = ?status.code(), timed_out, "command finished");
     Ok(CommandOutput {
         status,
         stdout,

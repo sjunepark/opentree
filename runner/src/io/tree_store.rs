@@ -6,12 +6,14 @@ use std::path::Path;
 use anyhow::{Context, Result, anyhow};
 use jsonschema::validator_for;
 use serde_json::Value;
+use tracing::{debug, warn};
 
 use crate::core::invariants::validate_invariants;
 use crate::tree::Node;
 
 /// Load and validate tree from disk (schema + invariants).
 pub fn load_tree(schema_path: &Path, tree_path: &Path) -> Result<Node> {
+    debug!(tree_path = %tree_path.display(), "loading tree");
     let tree_contents = fs::read_to_string(tree_path)
         .with_context(|| format!("read tree {}", tree_path.display()))?;
     let tree_value: Value = serde_json::from_str(&tree_contents)
@@ -20,11 +22,13 @@ pub fn load_tree(schema_path: &Path, tree_path: &Path) -> Result<Node> {
     let tree: Node = serde_json::from_value(tree_value)
         .with_context(|| format!("deserialize tree {}", tree_path.display()))?;
     validate_tree_invariants(&tree)?;
+    debug!(root_id = %tree.id, "tree loaded");
     Ok(tree)
 }
 
 /// Write tree to disk with canonicalized formatting (sorted children).
 pub fn write_tree(tree_path: &Path, tree: &Node) -> Result<()> {
+    debug!(tree_path = %tree_path.display(), "writing tree");
     let mut cloned = tree.clone();
     cloned.sort_children();
     let mut buf = serde_json::to_string_pretty(&cloned)?;
@@ -44,6 +48,7 @@ fn validate_schema(schema_path: &Path, tree: &Value) -> Result<()> {
             .iter_errors(tree)
             .map(|err| err.to_string())
             .collect::<Vec<_>>();
+        warn!(errors = ?messages, "tree schema validation failed");
         return Err(anyhow!(
             "tree schema validation failed: {}",
             messages.join("; ")
@@ -57,6 +62,7 @@ fn validate_tree_invariants(tree: &Node) -> Result<()> {
     if errors.is_empty() {
         return Ok(());
     }
+    warn!(errors = ?errors, "tree invariants failed");
     Err(anyhow!("tree invariants failed: {}", errors.join("; ")))
 }
 

@@ -5,6 +5,7 @@ use std::path::Path;
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
+use tracing::debug;
 
 use crate::core::types::{AgentStatus, GuardOutcome};
 
@@ -37,15 +38,18 @@ impl Default for RunState {
 
 /// Load run state from disk.
 pub fn load_run_state(path: &Path) -> Result<RunState> {
+    debug!(path = %path.display(), "loading run state");
     let contents =
         fs::read_to_string(path).with_context(|| format!("read run state {}", path.display()))?;
-    let state = serde_json::from_str(&contents)
+    let state: RunState = serde_json::from_str(&contents)
         .with_context(|| format!("parse run state {}", path.display()))?;
+    debug!(run_id = ?state.run_id, next_iter = state.next_iter, "run state loaded");
     Ok(state)
 }
 
 /// Atomically write run state to disk (temp file + rename).
 pub fn write_run_state(path: &Path, state: &RunState) -> Result<()> {
+    debug!(path = %path.display(), run_id = ?state.run_id, next_iter = state.next_iter, "writing run state");
     let mut buf = serde_json::to_string_pretty(state)?;
     buf.push('\n');
     write_atomic(path, &buf)

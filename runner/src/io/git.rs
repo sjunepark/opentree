@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
 use anyhow::{Context, Result, anyhow};
+use tracing::{debug, instrument, warn};
 
 /// Parsed `git status --porcelain` entry.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -35,12 +36,15 @@ impl Git {
     }
 
     /// Return the current branch name (errors on detached HEAD).
+    #[instrument(skip_all)]
     pub fn current_branch(&self) -> Result<String> {
         let out = self.run_capture(&["rev-parse", "--abbrev-ref", "HEAD"])?;
         let name = out.trim().to_string();
         if name == "HEAD" {
+            warn!("detached HEAD detected");
             return Err(anyhow!("detached HEAD (refuse to run)"));
         }
+        debug!(branch = %name, "current branch");
         Ok(name)
     }
 
@@ -65,6 +69,7 @@ impl Git {
     }
 
     /// Ensure the worktree is clean, allowing entries with any of the given prefixes.
+    #[instrument(skip_all)]
     pub fn ensure_clean_except_prefixes(&self, allowed_prefixes: &[&str]) -> Result<()> {
         let entries = self.status_porcelain()?;
         let mut disallowed = Vec::new();
@@ -78,8 +83,10 @@ impl Git {
             disallowed.push(entry);
         }
         if disallowed.is_empty() {
+            debug!("worktree is clean");
             return Ok(());
         }
+        warn!(disallowed_count = disallowed.len(), "worktree not clean");
         let mut msg = String::new();
         msg.push_str("working tree not clean (disallowed changes):\n");
         for entry in disallowed {
@@ -107,13 +114,17 @@ impl Git {
     }
 
     /// Create and checkout a new branch at current HEAD.
+    #[instrument(skip_all, fields(branch))]
     pub fn checkout_new_branch(&self, branch: &str) -> Result<()> {
+        debug!(branch, "creating and checking out new branch");
         self.run_checked(&["checkout", "-b", branch])?;
         Ok(())
     }
 
     /// Checkout an existing branch.
+    #[instrument(skip_all, fields(branch))]
     pub fn checkout_branch(&self, branch: &str) -> Result<()> {
+        debug!(branch, "checking out branch");
         self.run_checked(&["checkout", branch])?;
         Ok(())
     }
@@ -133,10 +144,13 @@ impl Git {
     /// Commit staged changes with a message.
     ///
     /// If there are no staged changes, this returns Ok(false) and does nothing.
+    #[instrument(skip_all)]
     pub fn commit_staged(&self, message: &str) -> Result<bool> {
         if !self.has_staged_changes()? {
+            debug!("no staged changes, skipping commit");
             return Ok(false);
         }
+        debug!("committing staged changes");
         self.run_checked(&["commit", "-m", message])?;
         Ok(true)
     }

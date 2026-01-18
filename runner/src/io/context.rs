@@ -4,6 +4,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
+use tracing::debug;
 
 /// Data to write into `.runner/context/` for the current iteration.
 #[derive(Debug, Clone)]
@@ -39,6 +40,7 @@ impl ContextPaths {
 
 /// Clear `.runner/context/` and write fresh ephemeral context files.
 pub fn write_context(root: &Path, payload: &ContextPayload) -> Result<ContextPaths> {
+    debug!(root = %root.display(), "writing context");
     let paths = ContextPaths::new(root);
     clear_context_dir(&paths.dir)?;
 
@@ -52,11 +54,17 @@ pub fn write_context(root: &Path, payload: &ContextPayload) -> Result<ContextPat
         &render_optional("Failure (guard output)", payload.failure.as_deref()),
     )?;
 
+    debug!(
+        has_history = payload.history.is_some(),
+        has_failure = payload.failure.is_some(),
+        "context written"
+    );
     Ok(paths)
 }
 
 fn clear_context_dir(dir: &Path) -> Result<()> {
     if dir.exists() {
+        debug!(dir = %dir.display(), "clearing context dir");
         fs::remove_dir_all(dir).with_context(|| format!("remove context dir {}", dir.display()))?;
     }
     fs::create_dir_all(dir).with_context(|| format!("create context dir {}", dir.display()))

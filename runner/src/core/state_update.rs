@@ -5,11 +5,13 @@
 use crate::core::types::{AgentStatus, GuardOutcome, StateUpdateSummary};
 use crate::tree::Node;
 use std::collections::HashMap;
+use tracing::{debug, instrument};
 
 /// Apply runner-owned state updates to `next` using `prev` as the source of truth.
 ///
 /// This enforces runner ownership of `passes` and `attempts`, applies the
 /// selected-node transition, and derives internal passes from children.
+#[instrument(skip_all, fields(selected_id, status = ?status, guard = ?guard))]
 pub fn apply_state_updates(
     prev: &Node,
     next: &mut Node,
@@ -37,6 +39,7 @@ pub fn apply_state_updates(
                 if !selected.passes {
                     selected.passes = true;
                     summary.passes_set.push(selected.id.clone());
+                    debug!(node_id = %selected.id, "set passes=true");
                 }
             }
             GuardOutcome::Fail => {
@@ -44,6 +47,7 @@ pub fn apply_state_updates(
                 if before < selected.max_attempts {
                     selected.attempts = before + 1;
                     summary.attempts_incremented.push(selected.id.clone());
+                    debug!(node_id = %selected.id, attempts = selected.attempts, "incremented attempts");
                 }
             }
             GuardOutcome::Skipped => {}
@@ -53,6 +57,7 @@ pub fn apply_state_updates(
             if before < selected.max_attempts {
                 selected.attempts = before + 1;
                 summary.attempts_incremented.push(selected.id.clone());
+                debug!(node_id = %selected.id, attempts = selected.attempts, "incremented attempts on retry");
             }
         }
         AgentStatus::Decomposed => {}
@@ -64,6 +69,13 @@ pub fn apply_state_updates(
     summary.passes_set.sort();
     summary.attempts_incremented.sort();
     summary.derived_passes_set.sort();
+
+    debug!(
+        passes_set = ?summary.passes_set,
+        attempts_incremented = ?summary.attempts_incremented,
+        derived_passes_set = ?summary.derived_passes_set,
+        "state update complete"
+    );
 
     Ok(summary)
 }

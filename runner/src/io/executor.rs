@@ -6,6 +6,7 @@ use anyhow::{Context, Result, anyhow};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use tracing::{debug, info, instrument, warn};
 
 use crate::core::types::AgentOutput;
 use crate::io::process::{CommandOutput, run_command_with_timeout};
@@ -39,7 +40,10 @@ pub trait Executor {
 pub struct CodexExecutor;
 
 impl Executor for CodexExecutor {
+    #[instrument(skip_all, fields(timeout_secs = request.timeout.as_secs()))]
     fn exec(&self, request: &ExecRequest) -> Result<()> {
+        info!(workdir = %request.workdir.display(), "starting codex exec");
+
         if !request.output_schema_path.exists() {
             return Err(anyhow!(
                 "missing output schema {}",
@@ -75,24 +79,33 @@ impl Executor for CodexExecutor {
         )?;
 
         if output.timed_out {
+            warn!(
+                timeout_secs = request.timeout.as_secs(),
+                "codex exec timed out"
+            );
             return Err(anyhow!("codex exec timed out after {:?}", request.timeout));
         }
         if !output.status.success() {
+            warn!(exit_code = ?output.status.code(), "codex exec failed");
             return Err(anyhow!(
                 "codex exec failed with status {:?}",
                 output.status.code()
             ));
         }
 
+        debug!("codex exec completed successfully");
         Ok(())
     }
 }
 
 /// Execute the agent and load its output.
+#[instrument(skip_all, fields(output_path = %request.output_path.display()))]
 pub fn execute_and_load<E: Executor>(executor: &E, request: &ExecRequest) -> Result<AgentOutput> {
     executor.exec(request)?;
     ensure_output_exists(&request.output_path)?;
-    read_agent_output(&request.output_path)
+    let output = read_agent_output(&request.output_path)?;
+    debug!(status = ?output.status, "parsed agent output");
+    Ok(output)
 }
 
 fn ensure_output_exists(path: &Path) -> Result<()> {
