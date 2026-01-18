@@ -12,14 +12,17 @@
 - Decided stuck-node policy: hard-stop (documented in `DECISIONS.md` + `ARCHITECTURE.md`).
 - Enforced stuck-node hard-stop in `runner step` (exits non-zero when `attempts == max_attempts`).
 - Completed `.plan/6` (MVP commands: `runner validate` + `runner select`, shared helpers, docs).
+- Completed `.plan/7` (evaluation framework: eval crate, cases, harness, reporting).
 
 ## Next
 
 - Draft next plans (from `ARCHITECTURE.md` open decisions + `IMPENDING.md` research):
 - Plan: decide/implement optional `events.jsonl` emission (or explicitly defer).
 - Plan: keep executor codex-only for now; defer Claude backend until needed.
-- Plan: implement `eval/` evaluation framework (see `PROPOSAL.md`, tracked as `.plan/7`).
 
 ## Notes
 
 - Plan CLI needs `pyyaml` when run via `uv run --with pyyaml`.
+- Open questions (eval / `.plan/7`):
+  - Missing toolchains (ex: `go`): should a run be `failed` (check fails) or `skipped` (preflight detects missing deps and records skip)?
+  - `eval run --runs N`: should we create N isolated workspaces (current behavior) or reuse/reset one workspace per run for speed?

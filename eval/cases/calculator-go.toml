@@ -1,0 +1,22 @@
+[case]
+id = "calculator-go"
+goal = """
+Create a very basic calculator CLI using Golang.
+It should support add, subtract, multiply, divide.
+Usage: ./calculator <num1> <op> <num2>
+"""
+
+[config]
+max_iterations = 30
+max_attempts_default = 3
+
+[[checks]]
+type = "file_exists"
+path = "main.go"
+
+[[checks]]
+type = "command_succeeds"
+cmd = ["go", "build", "."]
+
+[[checks]]
+type = "runner_completed"

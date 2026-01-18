@@ -31,3 +31,15 @@ investigate filter="":
 fmt: mdfmt rustfmt
 check: mdcheck rustfmt-check clippy test
 ci: check
+
+eval-list:
+  cargo run -p eval -- list
+
+eval-run CASE:
+  cargo run -p eval -- run {{CASE}}
+
+eval-report CASE:
+  cargo run -p eval -- report {{CASE}}
+
+eval-clean CASE:
+  cargo run -p eval -- clean {{CASE}}

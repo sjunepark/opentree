@@ -1,0 +1,20 @@
+[package]
+name = "eval"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.100"
+clap = { version = "4.5.54", features = ["derive"] }
+chrono = { version = "0.4.41", default-features = false, features = ["clock"] }
+rand = "0.8.5"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.149"
+sha2 = "0.10.8"
+hex = "0.4.3"
+toml = "0.9.11"
+runner = { path = "../runner" }
+wait-timeout = "0.2.1"
+
+[dev-dependencies]
+tempfile = "3.10.1"
