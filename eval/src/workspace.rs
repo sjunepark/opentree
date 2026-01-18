@@ -32,8 +32,14 @@ pub fn write_goal_file(root: &Path, goal: &str) -> Result<String> {
 }
 
 /// Stage all files and commit with the given message.
+/// Does nothing if there are no changes to commit.
 pub fn commit_all(root: &Path, message: &str) -> Result<()> {
     run_git(root, &["add", "."])?;
+    let status = run_git(root, &["status", "--porcelain"])?;
+    if status.trim().is_empty() {
+        debug!("no changes to commit, skipping");
+        return Ok(());
+    }
     run_git(root, &["commit", "-m", message])?;
     Ok(())
 }
