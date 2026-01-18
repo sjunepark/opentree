@@ -13,7 +13,7 @@ use std::process::Command;
 use tracing::{debug, info, instrument, warn};
 
 use crate::core::types::AgentOutput;
-use crate::io::process::{CommandOutput, run_command_with_timeout};
+use crate::io::process::{CommandOutput, run_command_with_stream};
 
 /// Parameters for an executor invocation.
 #[derive(Debug, Clone)]
@@ -32,6 +32,9 @@ pub struct ExecRequest {
     pub timeout: Duration,
     /// Truncate executor output logs beyond this many bytes.
     pub output_limit_bytes: usize,
+    /// Path to write JSONL event stream. When `Some`, enables `--json` flag
+    /// and writes stdout lines incrementally for real-time observability.
+    pub stream_path: Option<PathBuf>,
 }
 
 /// Abstraction over agent execution backends.
@@ -44,7 +47,7 @@ pub trait Executor {
 pub struct CodexExecutor;
 
 impl Executor for CodexExecutor {
-    #[instrument(skip_all, fields(timeout_secs = request.timeout.as_secs()))]
+    #[instrument(skip_all, fields(timeout_secs = request.timeout.as_secs(), streaming = request.stream_path.is_some()))]
     fn exec(&self, request: &ExecRequest) -> Result<()> {
         info!(workdir = %request.workdir.display(), "starting codex exec");
 
@@ -59,10 +62,14 @@ impl Executor for CodexExecutor {
                 .with_context(|| format!("create output dir {}", parent.display()))?;
         }
         let mut cmd = Command::new("codex");
-        cmd.arg("exec")
-            .arg("--sandbox")
-            .arg("danger-full-access")
-            .arg("--output-schema")
+        cmd.arg("exec").arg("--sandbox").arg("danger-full-access");
+
+        // Enable JSON streaming when stream_path is set
+        if request.stream_path.is_some() {
+            cmd.arg("--json");
+        }
+
+        cmd.arg("--output-schema")
             .arg(&request.output_schema_path)
             .arg("--output-last-message")
             .arg(&request.output_path)
@@ -70,11 +77,12 @@ impl Executor for CodexExecutor {
             .current_dir(&request.workdir)
             .stdin(std::process::Stdio::piped());
 
-        let output = run_command_with_timeout(
+        let output = run_command_with_stream(
             cmd,
             Some(request.prompt.as_bytes()),
             request.timeout,
             request.output_limit_bytes,
+            request.stream_path.as_deref(),
         )
         .context("run codex exec")?;
 
@@ -194,6 +202,7 @@ mod tests {
             executor_log_path: temp.path().join("executor.log"),
             timeout: Duration::from_secs(1),
             output_limit_bytes: 1000,
+            stream_path: None,
         };
         let fake = FakeExecutor {
             output: Some(AgentOutput {
@@ -220,6 +229,7 @@ mod tests {
             executor_log_path: temp.path().join("executor.log"),
             timeout: Duration::from_secs(1),
             output_limit_bytes: 1000,
+            stream_path: None,
         };
         let fake = FakeExecutor { output: None };
 

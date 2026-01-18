@@ -10,7 +10,15 @@ use tokio::sync::broadcast;
 pub enum ChangeEvent {
     TreeChanged,
     RunStateChanged,
-    IterationAdded { run_id: String, iter: u32 },
+    IterationAdded {
+        run_id: String,
+        iter: u32,
+    },
+    /// JSONL stream file updated (new events written).
+    StreamUpdated {
+        run_id: String,
+        iter: u32,
+    },
     ConfigChanged,
     AssumptionsChanged,
     QuestionsChanged,

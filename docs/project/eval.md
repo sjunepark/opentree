@@ -2,8 +2,6 @@
 
 The `eval` crate runs real runner loops against declarative test cases for local experimentation.
 
-For architecture overview, see [`ARCHITECTURE.md`](../../ARCHITECTURE.md) §13.
-
 ## Quick Start
 
 ```bash

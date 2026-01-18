@@ -248,6 +248,104 @@ fn schema_enforced_with_arbitrary_prompt() {
     assert!(json["summary"].is_string(), "summary should be string");
 }
 
+/// Verifies that `--json` streams JSONL events during execution.
+///
+/// Spawns Codex with `--json` flag and reads stdout incrementally to verify:
+/// - Multiple JSONL lines are emitted
+/// - Each line is valid JSON
+/// - Lines contain event data with type information
+#[test]
+#[ignore]
+fn codex_json_streams_events() {
+    use std::io::{BufRead, BufReader};
+
+    let tmp = tempdir().expect("create tempdir");
+    let schema_dest = tmp.path().join("schema.json");
+    copy_schema(&schema_dest);
+
+    let output_path = tmp.path().join("output.json");
+
+    let mut child = Command::new("codex")
+        .args([
+            "exec",
+            "--json",
+            "--output-schema",
+            schema_dest.to_str().unwrap(),
+            "--output-last-message",
+            output_path.to_str().unwrap(),
+            "--",
+            "Output JSON with status='done' and summary='test completed'",
+        ])
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("spawn codex");
+
+    let stdout = child.stdout.take().expect("take stdout");
+    let reader = BufReader::new(stdout);
+
+    let mut lines_collected: Vec<serde_json::Value> = Vec::new();
+    let mut line_count = 0;
+
+    for line_result in reader.lines() {
+        match line_result {
+            Ok(line) => {
+                line_count += 1;
+                println!("Line {}: {}", line_count, &line[..line.len().min(200)]);
+
+                // Verify it's valid JSON
+                match serde_json::from_str::<serde_json::Value>(&line) {
+                    Ok(json) => {
+                        lines_collected.push(json);
+                    }
+                    Err(e) => {
+                        panic!(
+                            "Line {} is not valid JSON: {}\nContent: {}",
+                            line_count, e, line
+                        );
+                    }
+                }
+            }
+            Err(e) => {
+                panic!("Failed to read line: {}", e);
+            }
+        }
+    }
+
+    // Wait for child to complete
+    let status = child
+        .wait_timeout(CODEX_TIMEOUT)
+        .expect("wait")
+        .expect("timeout");
+
+    println!("\nTotal JSONL lines: {}", lines_collected.len());
+    println!("Exit status: {:?}", status);
+
+    // Verify we got multiple JSONL events
+    assert!(
+        lines_collected.len() > 1,
+        "expected multiple JSONL lines, got {}",
+        lines_collected.len()
+    );
+
+    // Verify the output file was also written
+    assert!(output_path.exists(), "output file not created");
+
+    // Print event types for debugging
+    println!("\nEvent summary:");
+    for (i, event) in lines_collected.iter().enumerate() {
+        if let Some(event_type) = event.get("type").and_then(|v| v.as_str()) {
+            println!("  {}: type={}", i, event_type);
+        } else {
+            println!(
+                "  {}: {:?}",
+                i,
+                event.as_object().map(|o| o.keys().collect::<Vec<_>>())
+            );
+        }
+    }
+}
+
 /// Copies the schema file from the runner crate to the destination path.
 fn copy_schema(dest: &Path) {
     // Locate schema relative to CARGO_MANIFEST_DIR

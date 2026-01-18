@@ -197,6 +197,7 @@ pub fn run_step<E: Executor, G: GuardRunner>(
             executor_log_path: iter_dir.join("executor.log"),
             timeout: exec_timeout,
             output_limit_bytes: cfg.executor_output_limit_bytes,
+            stream_path: Some(iter_dir.join("stream.jsonl")),
         };
 
         let output = execute_and_load(executor, &exec_request)?;

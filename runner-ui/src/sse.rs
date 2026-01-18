@@ -42,6 +42,11 @@ impl From<&ChangeEvent> for SsePayload {
                 run_id: Some(run_id.clone()),
                 iter: Some(*iter),
             },
+            ChangeEvent::StreamUpdated { run_id, iter } => SsePayload {
+                event_type: "stream_updated".to_string(),
+                run_id: Some(run_id.clone()),
+                iter: Some(*iter),
+            },
             ChangeEvent::ConfigChanged => SsePayload {
                 event_type: "config_changed".to_string(),
                 run_id: None,
@@ -173,6 +178,8 @@ fn process_events(
     let mut assumptions_changed = false;
     let mut questions_changed = false;
     let mut new_iterations: Vec<(String, u32)> = Vec::new();
+    let mut stream_updates: std::collections::HashSet<(String, u32)> =
+        std::collections::HashSet::new();
 
     let tree_path = state.tree_path();
     let run_state_path = state.run_state_path();
@@ -199,8 +206,14 @@ fn process_events(
             } else if path == &questions_path {
                 questions_changed = true;
             } else if path.starts_with(&iter_dir) {
+                // Check if this is a stream.jsonl update
+                if path.file_name().and_then(|n| n.to_str()) == Some("stream.jsonl") {
+                    if let Some((run_id, iter)) = parse_iteration_path(&iter_dir, path) {
+                        stream_updates.insert((run_id, iter));
+                    }
+                }
                 // Check if this is a new iteration directory
-                if let Some((run_id, iter)) = parse_iteration_path(&iter_dir, path)
+                else if let Some((run_id, iter)) = parse_iteration_path(&iter_dir, path)
                     && !known_iterations.contains(&(run_id.clone(), iter))
                 {
                     known_iterations.insert((run_id.clone(), iter));
@@ -236,6 +249,12 @@ fn process_events(
         let _ = state
             .event_tx
             .send(ChangeEvent::IterationAdded { run_id, iter });
+    }
+    for (run_id, iter) in stream_updates {
+        debug!(run_id = %run_id, iter = iter, "broadcasting stream update");
+        let _ = state
+            .event_tx
+            .send(ChangeEvent::StreamUpdated { run_id, iter });
     }
 }
 

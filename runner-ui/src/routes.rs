@@ -3,11 +3,11 @@
 use std::fs;
 
 use axum::Router;
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
-use axum::response::Json;
+use axum::response::{IntoResponse, Json, Response};
 use axum::routing::get;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::state::AppState;
@@ -24,6 +24,7 @@ pub fn api_router() -> Router<AppState> {
         .route("/iterations", get(list_iterations))
         .route("/iterations/{run_id}/{iter}", get(get_iteration))
         .route("/iterations/{run_id}/{iter}/guard.log", get(get_guard_log))
+        .route("/iterations/{run_id}/{iter}/stream", get(get_stream))
 }
 
 async fn health() -> &'static str {
@@ -78,15 +79,16 @@ fn toml_to_json(toml_val: toml::Value) -> Value {
     match toml_val {
         toml::Value::String(s) => Value::String(s),
         toml::Value::Integer(i) => Value::Number(i.into()),
-        toml::Value::Float(f) => {
-            serde_json::Number::from_f64(f).map_or(Value::Null, Value::Number)
-        }
+        toml::Value::Float(f) => serde_json::Number::from_f64(f).map_or(Value::Null, Value::Number),
         toml::Value::Boolean(b) => Value::Bool(b),
         toml::Value::Datetime(dt) => Value::String(dt.to_string()),
         toml::Value::Array(arr) => Value::Array(arr.into_iter().map(toml_to_json).collect()),
-        toml::Value::Table(table) => {
-            Value::Object(table.into_iter().map(|(k, v)| (k, toml_to_json(v))).collect())
-        }
+        toml::Value::Table(table) => Value::Object(
+            table
+                .into_iter()
+                .map(|(k, v)| (k, toml_to_json(v)))
+                .collect(),
+        ),
     }
 }
 
@@ -185,6 +187,65 @@ async fn get_guard_log(
     }
 
     fs::read_to_string(&log_path).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+/// Query params for stream endpoint.
+#[derive(Deserialize, Default)]
+struct StreamQuery {
+    /// Number of lines to skip from the beginning (for incremental fetches).
+    offset: Option<usize>,
+}
+
+/// GET /api/iterations/:run/:iter/stream - get JSONL event stream.
+///
+/// Returns stream.jsonl content as application/x-ndjson.
+/// Optional `?offset=N` query param to skip first N lines (for incremental fetches).
+async fn get_stream(
+    State(state): State<AppState>,
+    Path((run_id, iter)): Path<(String, u32)>,
+    Query(query): Query<StreamQuery>,
+) -> Result<Response, StatusCode> {
+    let stream_path = state
+        .iterations_dir()
+        .join(&run_id)
+        .join(iter.to_string())
+        .join("stream.jsonl");
+
+    if !stream_path.exists() {
+        // Return empty NDJSON response if file doesn't exist yet
+        return Ok((
+            [(
+                axum::http::header::CONTENT_TYPE,
+                "application/x-ndjson; charset=utf-8",
+            )],
+            String::new(),
+        )
+            .into_response());
+    }
+
+    let content =
+        fs::read_to_string(&stream_path).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    // Apply offset if specified
+    let output = if let Some(offset) = query.offset {
+        content.lines().skip(offset).collect::<Vec<_>>().join("\n")
+            + if content.lines().skip(offset).count() > 0 {
+                "\n"
+            } else {
+                ""
+            }
+    } else {
+        content
+    };
+
+    Ok((
+        [(
+            axum::http::header::CONTENT_TYPE,
+            "application/x-ndjson; charset=utf-8",
+        )],
+        output,
+    )
+        .into_response())
 }
 
 fn read_json_file(path: &std::path::Path) -> Result<Json<Value>, StatusCode> {
