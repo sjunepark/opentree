@@ -79,7 +79,8 @@ Runner-owned state (long-lived):
 - `.runner/state/run_state.json` — run/iteration bookkeeping (runner-owned).
 - `.runner/state/assumptions.md` — accumulated assumptions (agent may append).
 - `.runner/state/questions.md` — open questions for human review (agent may append).
-- `.runner/state/agent_output.schema.json` — JSON Schema for agent output.
+- `.runner/state/tree_decision.schema.json` — JSON Schema for tree-agent decisions (runner-written).
+- `.runner/state/executor_output.schema.json` — JSON Schema for executor agent output (runner-written).
 
 Ephemeral context (rewritten each iteration):
 
@@ -89,6 +90,8 @@ Ephemeral context (rewritten each iteration):
 
 Iteration logs (append-only, gitignored):
 
+- `.runner/iterations/{run-id}/{iter-n}/planner_output.json`
+- `.runner/iterations/{run-id}/{iter-n}/planner_executor.log`
 - `.runner/iterations/{run-id}/{iter-n}/output.json`
 - `.runner/iterations/{run-id}/{iter-n}/guard.log`
 - `.runner/iterations/{run-id}/{iter-n}/executor.log`

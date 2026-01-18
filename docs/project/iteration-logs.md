@@ -7,10 +7,12 @@ Iteration logs are the audit trail for debugging. They enable post-mortem analys
 ```text
 .runner/iterations/{run-id}/{iter}/
 ├── meta.json           ← iteration metadata (timing, node, outcome)
-├── output.json         ← agent's status + summary
-├── executor.log        ← executor (codex) stdout/stderr
+├── planner_output.json ← tree agent decision (execute/decompose)
+├── planner_executor.log ← executor (codex) stdout/stderr for tree agent
+├── output.json         ← iteration status + summary
+├── executor.log        ← executor (codex) stdout/stderr for executor agent (execute only)
 ├── guard.log           ← guard stdout/stderr (only when status=done)
-├── runner_error.log    ← runner-internal failures (not agent failures)
+├── runner_error.log    ← runner-detected failures (runner-internal or agent contract violations)
 ├── tree.before.json    ← tree snapshot pre-iteration
 └── tree.after.json     ← tree snapshot post-iteration
 ```
@@ -21,10 +23,12 @@ All logs are **local-only** and **gitignored**. They don't pollute repo history 
 
 | File | When Written | Trigger |
 |------|--------------|---------|
-| `output.json` | During executor phase | Written by `execute_and_load()` after agent completes |
-| `executor.log` | After executor completes | `write_executor_log()` captures command output |
+| `planner_output.json` | During tree-agent phase | Written by `execute_and_load_json()` after tree agent completes |
+| `planner_executor.log` | After tree-agent completes | `write_executor_log()` captures command output |
+| `output.json` | At iteration end | Runner-written canonical output for the iteration (status + summary) |
+| `executor.log` | After executor completes | Written only when the executor agent runs |
 | `guard.log` | After guards complete | Only when `status=done`; guards skip on retry |
-| `runner_error.log` | On runner error | Internal failures (validation, state updates) |
+| `runner_error.log` | On failure | Runner-internal errors and agent contract violations that force retry |
 | `tree.before.json` | At iteration end | Snapshot of tree before agent ran |
 | `tree.after.json` | At iteration end | Snapshot after all updates applied |
 | `meta.json` | At iteration end | First file written in `write_iteration()` |
@@ -71,6 +75,17 @@ Agent's structured output:
 {
   "status": "done",
   "summary": "Implemented the auth middleware..."
+}
+```
+
+### planner_output.json
+
+Tree agent decision output:
+
+```json
+{
+  "decision": "execute",
+  "summary": "Looks executable as-is."
 }
 ```
 

@@ -1,8 +1,15 @@
 # Problem: Decomposition Prompting Gap
 
+## Status (2026-01-18)
+
+This is addressed by introducing a dedicated **tree agent** that outputs structured
+decomposition decisions (`decision=execute|decompose` + optional child specs). The
+runner applies child nodes to `.runner/state/tree.json` deterministically, so
+decomposition no longer relies on the executor agent discovering/editing tree files.
+
 ## Summary
 
-When an agent declares `status: "decomposed"`, it's expected to add children to `tree.json`. However, the current prompting doesn't tell the agent:
+Previously, when an agent declared `status: "decomposed"`, it was expected to add children to `tree.json`. The prompt did not tell the agent:
 
 1. Where `tree.json` is located (`.runner/state/tree.json`)
 2. The JSON schema to use

@@ -63,8 +63,8 @@ Code: `runner/src/core/state_update.rs:98-118`
 
 ## Runner Error Recovery
 
-When step execution fails (timeout, output parse error, etc.), the runner enters
-a recovery path instead of propagating the error immediately:
+When step execution fails (timeout, executor/guard failures, etc.), the runner enters
+a recovery path to keep state consistent:
 
 | Condition | `status` | `guard_outcome` | `attempts` |
 |-----------|----------|-----------------|------------|
@@ -87,6 +87,16 @@ Runner-internal errors are not fed back to the node agent via `.runner/context/h
 `.runner/context/failure.md`.
 
 Code: `runner/src/step.rs` `run_step()` recovery `match attempt { ... }`
+
+### Agent Contract Violations
+
+Some failures are caused by the agent producing an invalid or disallowed tree edit (e.g., immutability
+violation, status invariants, disallowed child additions, or an invalid tree after execution). These are
+treated as **agent retries**:
+
+| Condition | `status` | `guard_outcome` | `attempts` | Feedback |
+|-----------|----------|-----------------|------------|----------|
+| Agent contract violation | Retry | Skipped | `+1` (saturating) | Summary propagated via `history.md` |
 
 ## Flow Summary
 

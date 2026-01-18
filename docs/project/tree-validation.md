@@ -14,8 +14,10 @@ run_step()
 ├── load_tree()           ← schema + invariants
 │   ├── validate_schema()
 │   └── validate_invariants()
-├── execute_and_load()    ← agent runs
+├── execute_and_load_json() ← tree agent runs
+├── execute_and_load()      ← executor agent runs (execute only)
 ├── load_tree()           ← schema + invariants (on modified tree)
+├── validate_child_additions_restricted() ← restrict where new children may appear
 ├── validate_post_exec_tree()  ← immutability
 └── validate_status()     ← status invariants
 ```
@@ -124,6 +126,15 @@ status=done but selected node 'auth' gained children (prev=0, next=2)
 
 Violation is treated as malformed iteration → triggers retry with error context.
 
+## 5. Child Addition Restriction (Decompose Only Current Node)
+
+Even when agents are allowed to edit open nodes, decomposition must be localized:
+
+- The only node that may gain *new* children is the **selected node**, and only when decomposing.
+- In execute mode, no node may gain new children (executor must not add children).
+
+**Implementation:** `core/child_additions.rs` → `validate_child_additions_restricted()`
+
 ## Canonicalization
 
 **Implementation:** `tree.rs` → `Node::sort_children()`
@@ -175,33 +186,35 @@ Called on every tree write to ensure:
 3. Serialize to pretty JSON with trailing newline
 4. Write atomically to disk
 
-## Error Recovery: Repair Tree Mode
+## Error Recovery (MVP)
 
-When tree validation fails after an agent session, the runner enters **REPAIR TREE** mode:
+The runner distinguishes between:
 
-- Does NOT select a normal leaf
-- Prompts agent to restore schema validity
-- Commits the repair attempt
-- Keeps loop automation-first (deterministic recovery)
+- **Runner-internal errors** (executor spawn/timeout, guard runner failures, git failures): `run_step()`
+  returns an error and does **not** consume a node attempt.
+- **Agent contract violations** (tree invalid after execution, immutability violation, status
+  invariant violation, disallowed child additions): the runner restores a valid tree snapshot,
+  writes `runner_error.log`, and records `status=retry` with an error summary (consumes an attempt).
 
-Note: This is architecturally designed but not fully implemented in MVP.
+This keeps the loop automation-first: contract violations become actionable feedback to the next
+iteration, while true infrastructure failures still stop.
 
 ## Error Reporting
 
-All validation errors propagate as `anyhow::Error` to `run_step()` caller:
-
-- Written to `runner_error.log` if iteration fails internally
-- Does NOT increment node `attempts` (runner-internal failure)
-- Iteration logs still written (meta.json, tree snapshots, output.json)
+- Contract violations are recorded in the iteration’s `runner_error.log` and surfaced to the next
+  iteration via `history.md` (as a retry summary).
+- Runner-internal errors are recorded in `runner_error.log` but are not propagated into agent
+  context (`history.md` / `failure.md`).
 
 ## Source Files
 
 | File | Purpose |
 |------|---------|
 | `runner/src/core/invariants.rs` | `validate_invariants()` |
+| `runner/src/core/child_additions.rs` | `validate_child_additions_restricted()` |
 | `runner/src/core/immutability.rs` | `check_passed_node_immutability()` |
 | `runner/src/core/status_validator.rs` | `validate_status_invariants()` |
 | `runner/src/io/tree_store.rs` | `load_tree()`, `write_tree()`, `validate_schema()` |
-| `runner/src/step.rs` | Validation orchestration (lines 92-114, 177-178) |
+| `runner/src/step.rs` | Validation orchestration |
 | `runner/src/tree.rs` | `Node::sort_children()` |
 | `schemas/task_tree/v1.schema.json` | Schema definition |
