@@ -14,6 +14,7 @@
 - Completed `.plan/6` (MVP commands: `runner validate` + `runner select`, shared helpers, docs).
 - Completed `.plan/7` (evaluation framework: eval crate, cases, harness, reporting).
 - Recorded Codex integration decision: keep `codex exec`; use `--json` for streaming if needed; defer `app-server`/`mcp-server`.
+- Implemented `runner-ui` crate: read-only web UI for monitoring runner state (axum backend + Svelte frontend).
 
 ## Next
 

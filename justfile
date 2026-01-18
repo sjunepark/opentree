@@ -46,3 +46,22 @@ eval-report CASE:
 
 eval-clean CASE:
   RUST_LOG=eval=info cargo run -p eval -- clean {{CASE}}
+
+# Runner UI commands
+ui-install:
+  cd ui && bun install
+
+ui-dev:
+  cd ui && bun run dev
+
+ui-build:
+  cd ui && bun run build
+
+ui-server PROJECT_DIR=".":
+  RUST_LOG=runner_ui=info cargo run -p runner-ui -- --project-dir {{PROJECT_DIR}}
+
+# Run both UI server and Vite dev server (for development)
+ui-dev-full PROJECT_DIR=".":
+  @echo "Start backend: just ui-server {{PROJECT_DIR}}"
+  @echo "Start frontend: just ui-dev"
+  @echo "Then open http://localhost:5173"
