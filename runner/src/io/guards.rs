@@ -48,9 +48,13 @@ impl CommandGuardRunner {
 }
 
 impl GuardRunner for CommandGuardRunner {
-    #[instrument(skip_all, fields(command = %self.command.join(" "), timeout_secs = request.timeout.as_secs()))]
+    #[instrument(skip_all, fields(command = ?self.command, timeout_secs = request.timeout.as_secs()))]
     fn run(&self, request: &GuardRequest) -> Result<GuardOutcome> {
-        info!(workdir = %request.workdir.display(), "starting guard");
+        info!(
+            workdir = %request.workdir.display(),
+            command = ?self.command,
+            "starting guard"
+        );
 
         let program = self
             .command

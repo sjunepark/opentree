@@ -48,7 +48,11 @@ fn validate_schema(schema_path: &Path, tree: &Value) -> Result<()> {
             .iter_errors(tree)
             .map(|err| err.to_string())
             .collect::<Vec<_>>();
-        warn!(errors = ?messages, "tree schema validation failed");
+        warn!(
+            error_count = messages.len(),
+            "tree schema validation failed"
+        );
+        debug!(errors = ?messages, "tree schema validation errors");
         return Err(anyhow!(
             "tree schema validation failed: {}",
             messages.join("; ")
@@ -62,7 +66,8 @@ fn validate_tree_invariants(tree: &Node) -> Result<()> {
     if errors.is_empty() {
         return Ok(());
     }
-    warn!(errors = ?errors, "tree invariants failed");
+    warn!(error_count = errors.len(), "tree invariants failed");
+    debug!(errors = ?errors, "tree invariants errors");
     Err(anyhow!("tree invariants failed: {}", errors.join("; ")))
 }
 
