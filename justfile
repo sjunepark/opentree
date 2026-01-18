@@ -66,13 +66,20 @@ ui-dev-full PROJECT_DIR=".":
   @echo "Start frontend: just ui-dev"
   @echo "Then open http://localhost:5173"
 
-# Run eval with UI monitoring (runs eval in background, starts UI server)
-# Usage: In terminal 1: just eval-with-ui calculator-go
-#        In terminal 2: just ui-dev
+# Run eval with UI monitoring (runs eval, backend, and frontend together)
+# Usage: just eval-with-ui calculator-go
+#        Then open http://localhost:5173
 eval-with-ui CASE:
   #!/usr/bin/env bash
   set -euo pipefail
   WORKSPACE_LINK="eval/workspaces/{{CASE}}_latest"
+  EVAL_PID=""
+  SERVER_PID=""
+  cleanup() {
+    [[ -n "$EVAL_PID" ]] && kill "$EVAL_PID" 2>/dev/null || true
+    [[ -n "$SERVER_PID" ]] && kill "$SERVER_PID" 2>/dev/null || true
+  }
+  trap cleanup EXIT
   echo "Starting eval for {{CASE}} in background..."
   RUST_LOG=eval=info cargo run -p eval -- run {{CASE}} &
   EVAL_PID=$!
@@ -88,11 +95,19 @@ eval-with-ui CASE:
   if [[ -L "$WORKSPACE_LINK" ]]; then
     echo ""
     echo "Workspace: $(readlink "$WORKSPACE_LINK")"
-    echo "Run 'just ui-dev' in another terminal, then open http://localhost:5173"
+    echo "Starting backend server..."
+    RUST_LOG=runner_ui=info cargo run -p runner-ui -- --project-dir "$WORKSPACE_LINK" &
+    SERVER_PID=$!
+    # Ensure frontend dependencies are installed
+    if [[ ! -d "ui/node_modules" ]]; then
+      echo "Installing frontend dependencies..."
+      (cd ui && bun install)
+    fi
+    echo "Starting frontend dev server..."
+    echo "Open http://localhost:5173"
     echo ""
-    RUST_LOG=runner_ui=info cargo run -p runner-ui -- --project-dir "$WORKSPACE_LINK"
+    cd ui && bun run dev
   else
     echo "Error: workspace symlink not created"
-    kill $EVAL_PID 2>/dev/null || true
     exit 1
   fi
