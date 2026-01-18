@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "TreeDecision",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["decision", "summary"],
+  "properties": {
+    "decision": {
+      "type": "string",
+      "enum": ["execute", "decompose"]
+    },
+    "summary": {
+      "type": "string"
+    },
+    "children": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["title", "goal"],
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "goal": {
+            "type": "string",
+            "minLength": 1
+          },
+          "acceptance": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "decision": {
+            "const": "decompose"
+          }
+        }
+      },
+      "then": {
+        "required": ["children"],
+        "properties": {
+          "children": {
+            "minItems": 1
+          }
+        }
+      },
+      "else": {
+        "not": {
+          "required": ["children"]
+        }
+      }
+    }
+  ]
+}

@@ -7,7 +7,7 @@
   "properties": {
     "status": {
       "type": "string",
-      "enum": ["done", "retry", "decomposed"]
+      "enum": ["done", "retry"]
     },
     "summary": {
       "type": "string"
