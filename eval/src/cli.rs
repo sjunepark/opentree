@@ -1,3 +1,5 @@
+//! CLI command implementations.
+
 use std::path::Path;
 
 use anyhow::{Context, Result, bail};
@@ -6,6 +8,7 @@ use crate::case::{CaseFile, discover_cases};
 use crate::report::aggregate;
 use crate::run::run_case;
 
+/// List all available cases.
 pub fn list_cases(repo_root: &Path) -> Result<()> {
     let cases_dir = repo_root.join("eval").join("cases");
     let cases = discover_cases(&cases_dir)?;
@@ -15,6 +18,7 @@ pub fn list_cases(repo_root: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Run a case by id (optionally multiple times).
 pub fn run_case_by_id(repo_root: &Path, case_id: &str, runs: u32) -> Result<()> {
     let cases_dir = repo_root.join("eval").join("cases");
     let case_path = cases_dir.join(format!("{case_id}.toml"));
@@ -36,6 +40,7 @@ pub fn run_case_by_id(repo_root: &Path, case_id: &str, runs: u32) -> Result<()> 
     Ok(())
 }
 
+/// Show aggregated results for a case.
 pub fn report_case(repo_root: &Path, case_id: &str) -> Result<()> {
     let results_dir = repo_root.join("eval").join("results").join(case_id);
     let (summary, warnings) = aggregate(&results_dir)?;
@@ -56,6 +61,7 @@ pub fn report_case(repo_root: &Path, case_id: &str) -> Result<()> {
     Ok(())
 }
 
+/// Remove workspaces and results for a case.
 pub fn clean_case(repo_root: &Path, case_id: &str) -> Result<()> {
     let workspaces_dir = repo_root.join("eval").join("workspaces");
     let results_dir = repo_root.join("eval").join("results");

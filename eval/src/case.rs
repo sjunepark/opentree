@@ -1,3 +1,8 @@
+//! Case file parsing and validation.
+//!
+//! Cases are TOML files defining goals and verification checks.
+//! See `eval/cases/` for examples.
+
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -5,6 +10,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result, anyhow, bail};
 use serde::Deserialize;
 
+/// A parsed case file containing goal, config, and checks.
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 pub struct CaseFile {
     pub case: CaseMeta,
@@ -16,33 +22,47 @@ pub struct CaseFile {
     pub checks: Vec<Check>,
 }
 
+/// Case metadata: identifier and goal description.
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 pub struct CaseMeta {
+    /// Unique identifier (slug format: `[a-z0-9_-]+`).
     pub id: String,
+    /// Goal description passed to the runner.
     pub goal: String,
 }
 
+/// Runner configuration overrides for the case.
 #[derive(Debug, Clone, Default, Deserialize, PartialEq, Eq)]
 pub struct CaseConfig {
+    /// Maximum iterations before stopping the run.
     pub max_iterations: Option<u32>,
+    /// Default max attempts for new leaves.
     pub max_attempts_default: Option<u32>,
+    /// Guard command override (default: `["just", "ci"]`).
     pub guard: Option<GuardOverride>,
 }
 
+/// Custom guard command configuration.
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 pub struct GuardOverride {
+    /// Command to run as guard (e.g., `["make", "ci"]`).
     pub command: Vec<String>,
 }
 
+/// Verification check to run after the runner loop completes.
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Check {
+    /// Check that a file exists in the workspace.
     FileExists { path: PathBuf },
+    /// Check that a command exits successfully.
     CommandSucceeds { cmd: Vec<String> },
+    /// Check that the runner completed (exit code 0).
     RunnerCompleted,
 }
 
 impl CaseFile {
+    /// Load and validate a case file from the given path.
     pub fn load(path: &Path) -> Result<Self> {
         let contents =
             fs::read_to_string(path).with_context(|| format!("read case {}", path.display()))?;
@@ -119,6 +139,9 @@ impl Check {
     }
 }
 
+/// Discover and load all case files from a directory.
+///
+/// Returns cases sorted by id. Errors if duplicate ids are found.
 pub fn discover_cases(dir: &Path) -> Result<Vec<CaseFile>> {
     if !dir.exists() {
         return Ok(Vec::new());

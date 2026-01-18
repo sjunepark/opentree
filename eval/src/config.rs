@@ -1,8 +1,13 @@
+//! Runner configuration merging.
+//!
+//! Applies case-specific overrides to the default runner configuration.
+
 use anyhow::Result;
 use runner::io::config::RunnerConfig;
 
 use crate::case::CaseConfig;
 
+/// Apply case configuration overrides to the base runner config.
 pub fn apply_case_config(mut base: RunnerConfig, overrides: &CaseConfig) -> Result<RunnerConfig> {
     if let Some(max_iterations) = overrides.max_iterations {
         base.max_iterations = max_iterations;

@@ -1,3 +1,8 @@
+//! Check execution and outcome recording.
+//!
+//! Runs verification checks after the runner loop completes and records
+//! detailed outcomes including command output.
+
 use std::fs;
 use std::io::Read;
 use std::path::Path;
@@ -10,13 +15,17 @@ use wait_timeout::ChildExt;
 
 use crate::case::Check;
 
+/// Limits for command execution in checks.
 #[derive(Debug, Clone, Copy)]
 pub struct CommandLimits {
+    /// Maximum time before killing the command.
     pub timeout: Duration,
+    /// Maximum bytes to capture from stdout/stderr.
     pub output_limit_bytes: usize,
 }
 
 impl CommandLimits {
+    /// Default limits: 60s timeout, 50KB output.
     pub fn default_limits() -> Self {
         Self {
             timeout: Duration::from_secs(60),
@@ -25,11 +34,13 @@ impl CommandLimits {
     }
 }
 
+/// Collected check outcomes for a run.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Judgment {
     pub checks: Vec<CheckOutcome>,
 }
 
+/// Result of running a single check.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum CheckOutcome {
@@ -53,6 +64,7 @@ pub enum CheckOutcome {
     },
 }
 
+/// Run all checks and collect outcomes.
 pub fn run_checks(
     checks: &[Check],
     workspace_root: &Path,

@@ -1,3 +1,8 @@
+//! Result capture and persistence.
+//!
+//! Captures runner artifacts (tree, iteration logs) and metadata to the
+//! results directory for later analysis.
+
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -11,6 +16,7 @@ use runner::io::goal::read_goal_id;
 
 use crate::outcome::Outcome;
 
+/// Input for capturing results from a completed run.
 #[derive(Debug)]
 pub struct CaptureInput<'a> {
     pub case_id: &'a str,
@@ -24,13 +30,17 @@ pub struct CaptureInput<'a> {
     pub repo_root: &'a Path,
 }
 
+/// Metadata for an eval run, persisted to `meta.json`.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct EvalMeta {
     pub case_id: String,
     pub eval_run_id: String,
+    /// SHA-256 hash of the case file for reproducibility tracking.
     pub case_hash: String,
+    /// Git SHA of the runner repo at time of run.
     pub runner_git_sha: Option<String>,
     pub runner_binary: String,
+    /// Run ID from the runner (from GOAL.md frontmatter).
     pub runner_run_id: Option<String>,
     pub outcome: Option<Outcome>,
     pub start_time: String,
@@ -38,9 +48,13 @@ pub struct EvalMeta {
     pub duration_secs: f64,
     pub exit_code: Option<i32>,
     pub workspace: String,
+    /// Non-fatal errors encountered during capture.
     pub errors: Vec<String>,
 }
 
+/// Capture results from a completed run to the results directory.
+///
+/// Copies tree, run_state, and iteration logs. Writes metadata.
 pub fn capture_results(base_dir: &Path, input: &CaptureInput<'_>) -> Result<PathBuf> {
     let results_dir = results_dir(base_dir, input.case_id, input.eval_run_id);
     fs::create_dir_all(&results_dir)

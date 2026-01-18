@@ -1,3 +1,7 @@
+//! Workspace creation and management.
+//!
+//! Each eval run gets an isolated git repository with a generated justfile.
+
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -8,12 +12,16 @@ use rand::{Rng, distributions::Alphanumeric};
 
 use crate::case::Check;
 
+/// An isolated workspace for running a case.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Workspace {
+    /// Absolute path to the workspace root.
     pub root: PathBuf,
+    /// Workspace directory name (includes case id, timestamp, and random suffix).
     pub name: String,
 }
 
+/// Write the case goal to `.runner/GOAL.md`, preserving the run id.
 pub fn write_goal_file(root: &Path, goal: &str) -> Result<String> {
     let goal_path = root.join(".runner").join("GOAL.md");
     let run_id = runner::io::goal::read_goal_id(&goal_path)?
@@ -23,12 +31,18 @@ pub fn write_goal_file(root: &Path, goal: &str) -> Result<String> {
     Ok(run_id)
 }
 
+/// Stage all files and commit with the given message.
 pub fn commit_all(root: &Path, message: &str) -> Result<()> {
     run_git(root, &["add", "."])?;
     run_git(root, &["commit", "-m", message])?;
     Ok(())
 }
 
+/// Create an isolated workspace for running a case.
+///
+/// The workspace is a fresh git repository with:
+/// - A generated `justfile` from `command_succeeds` checks
+/// - A `README.txt` with case metadata
 pub fn create_workspace(base_dir: &Path, case_id: &str, checks: &[Check]) -> Result<Workspace> {
     fs::create_dir_all(base_dir)
         .with_context(|| format!("create workspace dir {}", base_dir.display()))?;

@@ -1,3 +1,26 @@
+//! Evaluation harness for running runner loops against declarative test cases.
+//!
+//! This crate provides tooling for local experimentation with real runner loops.
+//! Cases are defined in TOML format and specify goals, configuration overrides,
+//! and verification checks.
+//!
+//! # Commands
+//!
+//! - `eval list` — List available cases
+//! - `eval run <case-id> [--runs N]` — Run a case (optionally multiple times)
+//! - `eval report <case-id>` — Show aggregated results
+//! - `eval clean <case-id>` — Remove workspaces and results
+//!
+//! # Architecture
+//!
+//! - [`case`] — Case file parsing and validation
+//! - [`workspace`] — Isolated workspace creation
+//! - [`harness`] — Runner binary building and execution
+//! - [`judge`] — Check execution and outcome recording
+//! - [`outcome`] — Outcome classification (success/fail/stuck/error)
+//! - [`results`] — Result capture and persistence
+//! - [`report`] — Result aggregation and reporting
+
 mod case;
 mod cli;
 mod config;

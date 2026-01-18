@@ -1,3 +1,7 @@
+//! Runner binary building and execution.
+//!
+//! Handles building the runner crate and invoking `runner start`/`runner loop`.
+
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -5,6 +9,7 @@ use std::process::{Command, ExitStatus};
 
 use anyhow::{Context, Result, bail};
 
+/// Build the runner binary and return its path.
 pub fn build_runner_binary(repo_root: &Path) -> Result<PathBuf> {
     let output = Command::new("cargo")
         .arg("build")
@@ -20,11 +25,13 @@ pub fn build_runner_binary(repo_root: &Path) -> Result<PathBuf> {
     Ok(runner_binary_path(repo_root))
 }
 
+/// Get the expected path to the runner binary.
 pub fn runner_binary_path(repo_root: &Path) -> PathBuf {
     let binary = format!("runner{}", std::env::consts::EXE_SUFFIX);
     repo_root.join("target").join("debug").join(binary)
 }
 
+/// Run `runner start` in the workspace.
 pub fn run_runner_start(
     runner_path: &Path,
     workspace_root: &Path,
@@ -44,6 +51,7 @@ pub fn run_runner_start(
     )
 }
 
+/// Run `runner loop` in the workspace.
 pub fn run_runner_loop(
     runner_path: &Path,
     workspace_root: &Path,

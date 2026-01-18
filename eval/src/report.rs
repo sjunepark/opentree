@@ -1,3 +1,7 @@
+//! Result aggregation and reporting.
+//!
+//! Aggregates multiple runs of a case into summary statistics.
+
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -7,6 +11,7 @@ use anyhow::{Context, Result};
 use crate::judge::{CheckOutcome, Judgment};
 use crate::results::EvalMeta;
 
+/// Aggregated summary of multiple runs.
 #[derive(Debug, Default)]
 pub struct ReportSummary {
     pub runs: usize,
@@ -15,9 +20,11 @@ pub struct ReportSummary {
     pub stuck: usize,
     pub error: usize,
     pub avg_duration_secs: Option<f64>,
+    /// Pass rate per check: label → (passed, total).
     pub check_pass_rates: BTreeMap<String, (usize, usize)>,
 }
 
+/// Load all run directories for a case.
 pub fn load_run_dirs(case_results_dir: &Path) -> Result<Vec<PathBuf>> {
     if !case_results_dir.exists() {
         return Ok(Vec::new());
@@ -35,6 +42,9 @@ pub fn load_run_dirs(case_results_dir: &Path) -> Result<Vec<PathBuf>> {
     Ok(dirs)
 }
 
+/// Aggregate results from all runs of a case.
+///
+/// Returns the summary and any warnings (e.g., invalid result files).
 pub fn aggregate(case_results_dir: &Path) -> Result<(ReportSummary, Vec<String>)> {
     let mut summary = ReportSummary::default();
     let mut warnings = Vec::new();

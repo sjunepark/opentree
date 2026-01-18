@@ -1,3 +1,7 @@
+//! Case execution orchestration.
+//!
+//! Coordinates workspace creation, runner execution, and result capture.
+
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
@@ -11,13 +15,18 @@ use crate::outcome::{Outcome, classify_outcome};
 use crate::results::{CaptureInput, capture_results, update_outcome};
 use crate::workspace::{commit_all, create_workspace, write_goal_file};
 
+/// Result of running a single case.
 #[derive(Debug)]
 pub struct RunOutcome {
+    /// Unique identifier for this eval run.
     pub eval_run_id: String,
+    /// Path to the results directory.
     pub results_dir: PathBuf,
+    /// Classified outcome.
     pub outcome: Outcome,
 }
 
+/// Run a case end-to-end: workspace creation, runner loop, checks, result capture.
 pub fn run_case(repo_root: &Path, case_path: &Path, case: &CaseFile) -> Result<RunOutcome> {
     let runner_binary = build_runner_binary(repo_root)?;
     if !runner_binary.exists() {
