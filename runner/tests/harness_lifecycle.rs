@@ -7,6 +7,7 @@
 use std::fs;
 
 use runner::core::types::{AgentOutput, AgentStatus, GuardOutcome};
+use runner::io::config::RunnerConfig;
 use runner::io::git::Git;
 use runner::io::run_state::load_run_state;
 use runner::io::tree_store::load_tree;
@@ -40,6 +41,11 @@ fn full_lifecycle_completes_tree_with_retries() {
     let repo = TestRepo::new().expect("repo");
     let root = repo.path();
     repo.start_run().expect("start");
+    repo.write_config(&RunnerConfig {
+        max_iterations: 10,
+        ..RunnerConfig::default()
+    })
+    .expect("write config");
 
     // Build nested tree: root -> branch-a -> leaf-a, root -> leaf-b
     let tree = node_with_children(
@@ -194,6 +200,11 @@ fn guard_fail_reselection_loop() {
     let repo = TestRepo::new().expect("repo");
     let root = repo.path();
     repo.start_run().expect("start");
+    repo.write_config(&RunnerConfig {
+        max_iterations: 10,
+        ..RunnerConfig::default()
+    })
+    .expect("write config");
 
     // Two-leaf tree, ensures guard failures do not cause a skip to leaf-b.
     let tree = node_with_children(
@@ -326,6 +337,17 @@ fn decomposition_changes_selection_path() {
     let repo = TestRepo::new().expect("repo");
     let root = repo.path();
     repo.start_run().expect("start");
+    repo.write_config(&RunnerConfig {
+        max_iterations: 10,
+        ..RunnerConfig::default()
+    })
+    .expect("write config");
+    let git = Git::new(root);
+    git.add_all().expect("git add");
+    assert!(
+        git.commit_staged("chore: update config")
+            .expect("git commit")
+    );
 
     // Decomposed tree: root with two children (order 0 and 1)
     let decomposed_tree = node_with_children(
@@ -432,6 +454,11 @@ fn resumption_from_saved_state() {
     let repo = TestRepo::new().expect("repo");
     let root = repo.path();
     let start = repo.start_run().expect("start");
+    repo.write_config(&RunnerConfig {
+        max_iterations: 10,
+        ..RunnerConfig::default()
+    })
+    .expect("write config");
 
     // Write tree with one passed child and one open child
     let partial_tree = node_with_children(

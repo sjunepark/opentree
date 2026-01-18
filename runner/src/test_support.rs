@@ -19,6 +19,8 @@ use tempfile::TempDir;
 
 use crate::core::types::{AgentOutput, GuardOutcome};
 use crate::io::config::RunnerConfig;
+#[cfg(feature = "test-support")]
+use crate::io::config::write_config;
 use crate::io::executor::{ExecRequest, Executor};
 use crate::io::guards::{GuardRequest, GuardRunner};
 #[cfg(feature = "test-support")]
@@ -93,6 +95,11 @@ impl TestRepo {
         load_run_state(&self.run_state_path())
     }
 
+    /// Write runner config to `.runner/state/config.toml`.
+    pub fn write_config(&self, cfg: &RunnerConfig) -> Result<()> {
+        write_config(&self.config_path(), cfg)
+    }
+
     fn tree_path(&self) -> PathBuf {
         self.root.join(".runner/state/tree.json")
     }
@@ -103,6 +110,10 @@ impl TestRepo {
 
     fn run_state_path(&self) -> PathBuf {
         self.root.join(".runner/state/run_state.json")
+    }
+
+    fn config_path(&self) -> PathBuf {
+        self.root.join(".runner/state/config.toml")
     }
 }
 
