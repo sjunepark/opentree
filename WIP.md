@@ -18,6 +18,7 @@
 - Draft next plans (from `ARCHITECTURE.md` open decisions + `IMPENDING.md` research):
 - Plan: decide/implement optional `events.jsonl` emission (or explicitly defer).
 - Plan: keep executor codex-only for now; defer Claude backend until needed.
+- Plan: implement `eval/` evaluation framework (see `PROPOSAL.md`, tracked as `.plan/7`).
 
 ## Notes
 
