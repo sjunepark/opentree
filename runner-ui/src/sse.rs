@@ -200,7 +200,9 @@ fn process_events(
     }
 }
 
-fn collect_known_iterations(iter_dir: &std::path::Path) -> std::collections::HashSet<(String, u32)> {
+fn collect_known_iterations(
+    iter_dir: &std::path::Path,
+) -> std::collections::HashSet<(String, u32)> {
     let mut known = std::collections::HashSet::new();
 
     if !iter_dir.exists() {
@@ -235,7 +237,10 @@ fn collect_known_iterations(iter_dir: &std::path::Path) -> std::collections::Has
     known
 }
 
-fn parse_iteration_path(iter_dir: &std::path::Path, path: &std::path::Path) -> Option<(String, u32)> {
+fn parse_iteration_path(
+    iter_dir: &std::path::Path,
+    path: &std::path::Path,
+) -> Option<(String, u32)> {
     let rel = path.strip_prefix(iter_dir).ok()?;
     let mut components = rel.components();
 

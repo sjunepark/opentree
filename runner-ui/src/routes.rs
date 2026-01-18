@@ -79,12 +79,11 @@ async fn list_iterations(
         if let Ok(iter_entries) = fs::read_dir(&path) {
             for iter_entry in iter_entries.flatten() {
                 let iter_path = iter_entry.path();
-                if iter_path.is_dir() {
-                    if let Some(iter_name) = iter_path.file_name().and_then(|n| n.to_str()) {
-                        if let Ok(iter_num) = iter_name.parse::<u32>() {
-                            iterations.push(iter_num);
-                        }
-                    }
+                if iter_path.is_dir()
+                    && let Some(iter_name) = iter_path.file_name().and_then(|n| n.to_str())
+                    && let Ok(iter_num) = iter_name.parse::<u32>()
+                {
+                    iterations.push(iter_num);
                 }
             }
         }
