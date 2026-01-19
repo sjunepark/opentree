@@ -333,8 +333,26 @@ fn parse_iteration_path(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashSet;
+    use std::path::PathBuf;
+    use std::sync::atomic::{AtomicU64, Ordering};
 
-    fn modify_event(path: std::path::PathBuf) -> NotifyEvent {
+    // Unique counter for test isolation
+    static TEST_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+    // =========================================================================
+    // Test Helpers
+    // =========================================================================
+
+    fn create_event(path: PathBuf) -> NotifyEvent {
+        NotifyEvent {
+            kind: EventKind::Create(notify::event::CreateKind::File),
+            paths: vec![path],
+            attrs: Default::default(),
+        }
+    }
+
+    fn modify_event(path: PathBuf) -> NotifyEvent {
         NotifyEvent {
             kind: EventKind::Modify(notify::event::ModifyKind::Any),
             paths: vec![path],
@@ -342,63 +360,531 @@ mod tests {
         }
     }
 
-    #[test]
-    fn stream_update_emits_iteration_added_and_stream_updated() {
-        let project_dir = std::env::temp_dir()
-            .join("runner-ui-tests")
-            .join(format!("pid-{}", std::process::id()));
-        let state = AppState::new(project_dir);
-        let mut rx = state.event_tx.subscribe();
-        let mut known = std::collections::HashSet::new();
-
-        let path = state
-            .iterations_dir()
-            .join("run-x")
-            .join("1")
-            .join("stream.jsonl");
-
-        process_events(&state, &[modify_event(path)], &mut known);
-
-        let mut events = Vec::new();
-        while let Ok(ev) = rx.try_recv() {
-            events.push(ev);
+    fn delete_event(path: PathBuf) -> NotifyEvent {
+        NotifyEvent {
+            kind: EventKind::Remove(notify::event::RemoveKind::File),
+            paths: vec![path],
+            attrs: Default::default(),
         }
-
-        assert_eq!(events.len(), 2);
-        assert!(
-            matches!(&events[0], ChangeEvent::IterationAdded { run_id, iter } if run_id == "run-x" && *iter == 1)
-        );
-        assert!(
-            matches!(&events[1], ChangeEvent::StreamUpdated { run_id, iter } if run_id == "run-x" && *iter == 1)
-        );
     }
 
-    #[test]
-    fn meta_json_emits_iteration_completed() {
-        let project_dir = std::env::temp_dir()
-            .join("runner-ui-tests")
-            .join(format!("pid-{}", std::process::id()));
-        let state = AppState::new(project_dir);
-        let mut rx = state.event_tx.subscribe();
-        let mut known = std::collections::HashSet::new();
-        known.insert(("run-y".to_string(), 2));
+    fn access_event(path: PathBuf) -> NotifyEvent {
+        NotifyEvent {
+            kind: EventKind::Access(notify::event::AccessKind::Read),
+            paths: vec![path],
+            attrs: Default::default(),
+        }
+    }
 
-        let path = state
-            .iterations_dir()
-            .join("run-y")
-            .join("2")
-            .join("meta.json");
+    /// Creates a unique test state with isolated temp directory.
+    fn test_state() -> AppState {
+        let id = TEST_COUNTER.fetch_add(1, Ordering::SeqCst);
+        let project_dir = std::env::temp_dir().join("runner-ui-tests").join(format!(
+            "pid-{}-test-{}",
+            std::process::id(),
+            id
+        ));
+        AppState::new(project_dir)
+    }
 
-        process_events(&state, &[modify_event(path)], &mut known);
-
+    /// Collects all pending events from the broadcast receiver.
+    fn collect_events(rx: &mut broadcast::Receiver<ChangeEvent>) -> Vec<ChangeEvent> {
         let mut events = Vec::new();
         while let Ok(ev) = rx.try_recv() {
             events.push(ev);
         }
+        events
+    }
 
-        assert_eq!(events.len(), 1);
-        assert!(
-            matches!(&events[0], ChangeEvent::IterationCompleted { run_id, iter } if run_id == "run-y" && *iter == 2)
-        );
+    // =========================================================================
+    // State File Tests
+    // =========================================================================
+    mod state_files {
+        use super::*;
+
+        #[test]
+        fn tree_json_emits_tree_changed() {
+            let state = test_state();
+            let mut rx = state.event_tx.subscribe();
+            let mut known = HashSet::new();
+
+            let path = state.tree_path();
+            process_events(&state, &[modify_event(path)], &mut known);
+
+            let events = collect_events(&mut rx);
+            assert_eq!(events.len(), 1);
+            assert!(matches!(events[0], ChangeEvent::TreeChanged));
+        }
+
+        #[test]
+        fn run_state_json_emits_run_state_changed() {
+            let state = test_state();
+            let mut rx = state.event_tx.subscribe();
+            let mut known = HashSet::new();
+
+            let path = state.run_state_path();
+            process_events(&state, &[modify_event(path)], &mut known);
+
+            let events = collect_events(&mut rx);
+            assert_eq!(events.len(), 1);
+            assert!(matches!(events[0], ChangeEvent::RunStateChanged));
+        }
+
+        #[test]
+        fn config_toml_emits_config_changed() {
+            let state = test_state();
+            let mut rx = state.event_tx.subscribe();
+            let mut known = HashSet::new();
+
+            let path = state.config_path();
+            process_events(&state, &[modify_event(path)], &mut known);
+
+            let events = collect_events(&mut rx);
+            assert_eq!(events.len(), 1);
+            assert!(matches!(events[0], ChangeEvent::ConfigChanged));
+        }
+
+        #[test]
+        fn assumptions_md_emits_assumptions_changed() {
+            let state = test_state();
+            let mut rx = state.event_tx.subscribe();
+            let mut known = HashSet::new();
+
+            let path = state.assumptions_path();
+            process_events(&state, &[modify_event(path)], &mut known);
+
+            let events = collect_events(&mut rx);
+            assert_eq!(events.len(), 1);
+            assert!(matches!(events[0], ChangeEvent::AssumptionsChanged));
+        }
+
+        #[test]
+        fn questions_md_emits_questions_changed() {
+            let state = test_state();
+            let mut rx = state.event_tx.subscribe();
+            let mut known = HashSet::new();
+
+            let path = state.questions_path();
+            process_events(&state, &[modify_event(path)], &mut known);
+
+            let events = collect_events(&mut rx);
+            assert_eq!(events.len(), 1);
+            assert!(matches!(events[0], ChangeEvent::QuestionsChanged));
+        }
+    }
+
+    // =========================================================================
+    // Event Filtering Tests
+    // =========================================================================
+    mod event_filtering {
+        use super::*;
+
+        #[test]
+        fn delete_events_are_ignored() {
+            let state = test_state();
+            let mut rx = state.event_tx.subscribe();
+            let mut known = HashSet::new();
+
+            let path = state.tree_path();
+            process_events(&state, &[delete_event(path)], &mut known);
+
+            let events = collect_events(&mut rx);
+            assert!(events.is_empty(), "delete events should be ignored");
+        }
+
+        #[test]
+        fn access_events_are_ignored() {
+            let state = test_state();
+            let mut rx = state.event_tx.subscribe();
+            let mut known = HashSet::new();
+
+            let path = state.tree_path();
+            process_events(&state, &[access_event(path)], &mut known);
+
+            let events = collect_events(&mut rx);
+            assert!(events.is_empty(), "access events should be ignored");
+        }
+
+        #[test]
+        fn create_events_are_processed() {
+            let state = test_state();
+            let mut rx = state.event_tx.subscribe();
+            let mut known = HashSet::new();
+
+            let path = state.tree_path();
+            process_events(&state, &[create_event(path)], &mut known);
+
+            let events = collect_events(&mut rx);
+            assert_eq!(events.len(), 1);
+            assert!(matches!(events[0], ChangeEvent::TreeChanged));
+        }
+    }
+
+    // =========================================================================
+    // Deduplication Tests
+    // =========================================================================
+    mod deduplication {
+        use super::*;
+
+        #[test]
+        fn multiple_tree_changes_emit_single_event() {
+            let state = test_state();
+            let mut rx = state.event_tx.subscribe();
+            let mut known = HashSet::new();
+
+            let path = state.tree_path();
+            let events_in = vec![
+                modify_event(path.clone()),
+                modify_event(path.clone()),
+                modify_event(path),
+            ];
+            process_events(&state, &events_in, &mut known);
+
+            let events = collect_events(&mut rx);
+            assert_eq!(events.len(), 1, "should deduplicate tree changes");
+            assert!(matches!(events[0], ChangeEvent::TreeChanged));
+        }
+
+        #[test]
+        fn multiple_stream_updates_same_iteration_emit_single_event() {
+            let state = test_state();
+            let mut rx = state.event_tx.subscribe();
+            let mut known = HashSet::new();
+            known.insert(("run-a".to_string(), 1));
+
+            let path = state
+                .iterations_dir()
+                .join("run-a")
+                .join("1")
+                .join("stream.jsonl");
+            let events_in = vec![
+                modify_event(path.clone()),
+                modify_event(path.clone()),
+                modify_event(path),
+            ];
+            process_events(&state, &events_in, &mut known);
+
+            let events = collect_events(&mut rx);
+            assert_eq!(
+                events.len(),
+                1,
+                "should deduplicate stream updates for same iteration"
+            );
+            assert!(
+                matches!(&events[0], ChangeEvent::StreamUpdated { run_id, iter } if run_id == "run-a" && *iter == 1)
+            );
+        }
+
+        #[test]
+        fn multiple_iterations_in_batch_are_sorted_and_deduplicated() {
+            let state = test_state();
+            let mut rx = state.event_tx.subscribe();
+            let mut known = HashSet::new();
+
+            // Create events for multiple iterations in arbitrary order
+            let iter_dir = state.iterations_dir();
+            let events_in = vec![
+                // run-b iter 2 (twice)
+                modify_event(iter_dir.join("run-b").join("2").join("stream.jsonl")),
+                modify_event(iter_dir.join("run-b").join("2").join("stream.jsonl")),
+                // run-a iter 1
+                modify_event(iter_dir.join("run-a").join("1").join("stream.jsonl")),
+                // run-a iter 3
+                modify_event(iter_dir.join("run-a").join("3").join("stream.jsonl")),
+                // run-a iter 1 again
+                modify_event(iter_dir.join("run-a").join("1").join("stream.jsonl")),
+            ];
+            process_events(&state, &events_in, &mut known);
+
+            let events = collect_events(&mut rx);
+
+            // Expect: 3 IterationAdded (sorted), 3 StreamUpdated (sorted)
+            // IterationAdded order: run-a/1, run-a/3, run-b/2
+            // StreamUpdated order: run-a/1, run-a/3, run-b/2
+            assert_eq!(events.len(), 6);
+
+            // Check IterationAdded events (first 3)
+            assert!(
+                matches!(&events[0], ChangeEvent::IterationAdded { run_id, iter } if run_id == "run-a" && *iter == 1)
+            );
+            assert!(
+                matches!(&events[1], ChangeEvent::IterationAdded { run_id, iter } if run_id == "run-a" && *iter == 3)
+            );
+            assert!(
+                matches!(&events[2], ChangeEvent::IterationAdded { run_id, iter } if run_id == "run-b" && *iter == 2)
+            );
+
+            // Check StreamUpdated events (last 3)
+            assert!(
+                matches!(&events[3], ChangeEvent::StreamUpdated { run_id, iter } if run_id == "run-a" && *iter == 1)
+            );
+            assert!(
+                matches!(&events[4], ChangeEvent::StreamUpdated { run_id, iter } if run_id == "run-a" && *iter == 3)
+            );
+            assert!(
+                matches!(&events[5], ChangeEvent::StreamUpdated { run_id, iter } if run_id == "run-b" && *iter == 2)
+            );
+        }
+    }
+
+    // =========================================================================
+    // Edge Case Tests
+    // =========================================================================
+    mod edge_cases {
+        use super::*;
+
+        #[test]
+        fn empty_event_batch_produces_no_broadcasts() {
+            let state = test_state();
+            let mut rx = state.event_tx.subscribe();
+            let mut known = HashSet::new();
+
+            process_events(&state, &[], &mut known);
+
+            let events = collect_events(&mut rx);
+            assert!(events.is_empty());
+        }
+
+        #[test]
+        fn unknown_files_in_state_dir_are_ignored() {
+            let state = test_state();
+            let mut rx = state.event_tx.subscribe();
+            let mut known = HashSet::new();
+
+            // File in state dir but not one of the recognized files
+            let path = state.state_dir().join("unknown_file.txt");
+            process_events(&state, &[modify_event(path)], &mut known);
+
+            let events = collect_events(&mut rx);
+            assert!(
+                events.is_empty(),
+                "unknown files in state dir should be ignored"
+            );
+        }
+
+        #[test]
+        fn unknown_files_in_iteration_dir_are_ignored() {
+            let state = test_state();
+            let mut rx = state.event_tx.subscribe();
+            let mut known = HashSet::new();
+            known.insert(("run-x".to_string(), 1));
+
+            // File in iteration dir but not stream.jsonl or meta.json
+            let path = state
+                .iterations_dir()
+                .join("run-x")
+                .join("1")
+                .join("unknown.txt");
+            process_events(&state, &[modify_event(path)], &mut known);
+
+            let events = collect_events(&mut rx);
+            assert!(
+                events.is_empty(),
+                "unknown files in iteration dir should be ignored"
+            );
+        }
+    }
+
+    // =========================================================================
+    // parse_iteration_path Tests
+    // =========================================================================
+    mod parse_iteration_path_tests {
+        use super::*;
+
+        #[test]
+        fn parse_iteration_path_valid() {
+            let iter_dir = PathBuf::from("/project/.runner/iterations");
+            let path = iter_dir.join("run-abc").join("42").join("stream.jsonl");
+
+            let result = parse_iteration_path(&iter_dir, &path);
+            assert_eq!(result, Some(("run-abc".to_string(), 42)));
+        }
+
+        #[test]
+        fn parse_iteration_path_non_numeric_iter() {
+            let iter_dir = PathBuf::from("/project/.runner/iterations");
+            let path = iter_dir
+                .join("run-abc")
+                .join("not-a-number")
+                .join("stream.jsonl");
+
+            let result = parse_iteration_path(&iter_dir, &path);
+            assert_eq!(result, None, "non-numeric iteration should return None");
+        }
+
+        #[test]
+        fn parse_iteration_path_too_shallow() {
+            let iter_dir = PathBuf::from("/project/.runner/iterations");
+            // Only run_id, no iteration number
+            let path = iter_dir.join("run-abc");
+
+            let result = parse_iteration_path(&iter_dir, &path);
+            assert_eq!(result, None, "path too shallow should return None");
+        }
+
+        #[test]
+        fn parse_iteration_path_not_under_iter_dir() {
+            let iter_dir = PathBuf::from("/project/.runner/iterations");
+            let path = PathBuf::from("/somewhere/else/run-abc/1/stream.jsonl");
+
+            let result = parse_iteration_path(&iter_dir, &path);
+            assert_eq!(result, None, "path not under iter_dir should return None");
+        }
+    }
+
+    // =========================================================================
+    // collect_known_iterations Tests
+    // =========================================================================
+    mod collect_known_iterations_tests {
+        use super::*;
+
+        #[test]
+        fn collect_known_iterations_nonexistent_dir() {
+            let iter_dir = PathBuf::from("/nonexistent/path/that/does/not/exist");
+            let result = collect_known_iterations(&iter_dir);
+            assert!(result.is_empty());
+        }
+
+        #[test]
+        fn collect_known_iterations_with_dirs() {
+            let temp = tempfile::tempdir().unwrap();
+            let iter_dir = temp.path().join("iterations");
+
+            // Create structure: iterations/run-a/{1,2}, iterations/run-b/{3}
+            std::fs::create_dir_all(iter_dir.join("run-a").join("1")).unwrap();
+            std::fs::create_dir_all(iter_dir.join("run-a").join("2")).unwrap();
+            std::fs::create_dir_all(iter_dir.join("run-b").join("3")).unwrap();
+
+            let result = collect_known_iterations(&iter_dir);
+
+            assert_eq!(result.len(), 3);
+            assert!(result.contains(&("run-a".to_string(), 1)));
+            assert!(result.contains(&("run-a".to_string(), 2)));
+            assert!(result.contains(&("run-b".to_string(), 3)));
+        }
+
+        #[test]
+        fn collect_known_iterations_ignores_files() {
+            let temp = tempfile::tempdir().unwrap();
+            let iter_dir = temp.path().join("iterations");
+
+            // Create a valid dir and a file that should be ignored
+            std::fs::create_dir_all(iter_dir.join("run-a").join("1")).unwrap();
+            // File instead of dir at run level
+            std::fs::create_dir_all(&iter_dir).unwrap();
+            std::fs::write(iter_dir.join("some-file.txt"), "content").unwrap();
+            // File instead of dir at iteration level
+            std::fs::write(iter_dir.join("run-a").join("not-a-dir"), "content").unwrap();
+
+            let result = collect_known_iterations(&iter_dir);
+
+            assert_eq!(result.len(), 1);
+            assert!(result.contains(&("run-a".to_string(), 1)));
+        }
+    }
+
+    // =========================================================================
+    // Existing Tests (preserved)
+    // =========================================================================
+    mod iteration_events {
+        use super::*;
+
+        #[test]
+        fn stream_update_emits_iteration_added_and_stream_updated() {
+            let state = test_state();
+            let mut rx = state.event_tx.subscribe();
+            let mut known = HashSet::new();
+
+            let path = state
+                .iterations_dir()
+                .join("run-x")
+                .join("1")
+                .join("stream.jsonl");
+
+            process_events(&state, &[modify_event(path)], &mut known);
+
+            let events = collect_events(&mut rx);
+
+            assert_eq!(events.len(), 2);
+            assert!(
+                matches!(&events[0], ChangeEvent::IterationAdded { run_id, iter } if run_id == "run-x" && *iter == 1)
+            );
+            assert!(
+                matches!(&events[1], ChangeEvent::StreamUpdated { run_id, iter } if run_id == "run-x" && *iter == 1)
+            );
+        }
+
+        #[test]
+        fn meta_json_emits_iteration_completed() {
+            let state = test_state();
+            let mut rx = state.event_tx.subscribe();
+            let mut known = HashSet::new();
+            known.insert(("run-y".to_string(), 2));
+
+            let path = state
+                .iterations_dir()
+                .join("run-y")
+                .join("2")
+                .join("meta.json");
+
+            process_events(&state, &[modify_event(path)], &mut known);
+
+            let events = collect_events(&mut rx);
+
+            assert_eq!(events.len(), 1);
+            assert!(
+                matches!(&events[0], ChangeEvent::IterationCompleted { run_id, iter } if run_id == "run-y" && *iter == 2)
+            );
+        }
+    }
+
+    // =========================================================================
+    // Integration Test (requires real filesystem watcher)
+    // =========================================================================
+    mod integration {
+        use super::*;
+        use std::time::Duration;
+
+        /// Tests that the real PollWatcher detects file changes.
+        /// This test is ignored by default because it requires real I/O and timing.
+        #[tokio::test]
+        #[ignore]
+        async fn real_watcher_detects_file_changes() {
+            let temp = tempfile::tempdir().unwrap();
+            let project_dir = temp.path().to_path_buf();
+            let state = AppState::new(project_dir.clone());
+            let mut rx = state.event_tx.subscribe();
+
+            // Create required directories
+            let state_dir = state.state_dir();
+            std::fs::create_dir_all(&state_dir).unwrap();
+
+            // Start watcher
+            start_file_watcher(state.clone());
+
+            // Give watcher time to start
+            tokio::time::sleep(Duration::from_millis(200)).await;
+
+            // Write tree.json
+            std::fs::write(state.tree_path(), r#"{"nodes":[]}"#).unwrap();
+
+            // Wait for event (generous timeout for CI environments)
+            let result = tokio::time::timeout(Duration::from_secs(5), rx.recv()).await;
+
+            match result {
+                Ok(Ok(ChangeEvent::TreeChanged)) => {
+                    // Success
+                }
+                Ok(Ok(other)) => {
+                    panic!("expected TreeChanged, got {:?}", other);
+                }
+                Ok(Err(e)) => {
+                    panic!("broadcast error: {:?}", e);
+                }
+                Err(_) => {
+                    panic!("timeout waiting for TreeChanged event");
+                }
+            }
+        }
     }
 }
