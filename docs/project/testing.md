@@ -51,6 +51,25 @@ Rules:
 - Do not access the network.
 - Keep iteration logs/assertions anchored under `.runner/iterations/{run-id}/{iter}/`.
 
+## Investigation tests (external deps)
+
+Some checks require external dependencies (LLM tools, databases) and are intentionally excluded from CI.
+
+### LLM / CLI
+
+- Location: `runner/tests/investigation/` (wired via `runner/tests/investigation_llm.rs`)
+- Marked with `#[ignore]` so they only run when explicitly requested.
+- Run with: `cargo test -p runner --test investigation_llm -- --ignored` or `just investigate-llm`
+  (alias: `just investigate`).
+
+These tests may access the network and require local credentials.
+
+### DB
+
+- Location: `runner/tests/investigation_db/` (wired via `runner/tests/investigation_db.rs`)
+- Marked with `#[ignore]` so they only run when explicitly requested.
+- Run with: `cargo test -p runner --test investigation_db -- --ignored` or `just investigate-db`.
+
 ## Fixtures
 
 Fixtures live under `runner/tests/fixtures/` and are intentionally small:

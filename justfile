@@ -1,4 +1,6 @@
 set shell := ["bash", "-eu", "-o", "pipefail", "-c"]
+set dotenv-load
+set dotenv-filename := ".env.development"
 
 default:
   @just --list
@@ -36,12 +38,26 @@ test-ui filter="":
 test-ui-browser:
   cd ui && bun run test:ui
 
-# Run investigation tests (ignored by default, require Codex CLI)
-# Usage: just investigate [filter]
-#   just investigate        - run all
-#   just investigate codex  - run codex-related tests
+# Run investigation tests (ignored by default, require external deps)
+# TEST_LOG=1 in .env enables tracing; --nocapture shows output for passing tests
+#
+# LLM/Codex:
+# Usage: just investigate-llm [filter]
+#   just investigate-llm             - run all (ignored) LLM tests
+#   just investigate-llm tree_agent  - run only tree-agent tests
+#   just investigate-llm codex       - run only codex CLI tests
+#
+# DB:
+# Usage: just investigate-db [filter]
+#   just investigate-db              - run all (ignored) DB tests
+investigate-llm filter="":
+  cargo test -p runner --test investigation_llm {{filter}} -- --ignored --nocapture
+investigate-db filter="":
+  cargo test -p runner --test investigation_db {{filter}} -- --ignored --nocapture
+
+# Back-compat alias (runs LLM investigation tests)
 investigate filter="":
-  cargo test -p runner --test investigation {{filter}} -- --ignored
+  cargo test -p runner --test investigation_llm {{filter}} -- --ignored --nocapture
 
 fmt: mdfmt rustfmt
 check: mdcheck rustfmt-check clippy test

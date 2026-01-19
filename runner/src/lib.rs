@@ -73,6 +73,7 @@
 //!   git_commit()
 //! ```
 
+pub mod agents;
 pub mod core;
 pub mod exit_codes;
 pub mod io;

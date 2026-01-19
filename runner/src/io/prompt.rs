@@ -12,10 +12,6 @@ const TREE_AGENT_CONTRACT: &str = "Tree agent contract:\n- Decide whether the se
 
 const EXECUTOR_CONTRACT: &str = "Executor contract:\n- Do not modify passed nodes.\n- Do not set `passes=true` (runner-owned).\n- You MAY edit open nodes in `.runner/state/tree.json` (plan can change), but you MUST NOT add children to any node.\n- Run formatting/lint/tests as appropriate before declaring `status=done`.\n- Final response must be a single JSON object matching the output schema (no markdown, no code fences).";
 
-const TREE_AGENT_OUTPUT_CONTRACT: &str = "Output contract:\nReturn a single JSON object with `decision` and `summary` (and `children` only when `decision=decompose`).";
-const EXECUTOR_OUTPUT_CONTRACT: &str =
-    "Output contract:\nReturn a single JSON object with `status` and `summary`.";
-
 /// All inputs needed to build a prompt pack.
 #[derive(Debug, Clone)]
 pub struct PromptInputs {
@@ -96,7 +92,6 @@ impl PromptBuilder {
             PromptSection::droppable("tree", "Tree Summary", input.tree_summary.trim()),
             PromptSection::droppable("assumptions", "Assumptions", input.assumptions.trim()),
             PromptSection::droppable("questions", "Open Questions", input.questions.trim()),
-            PromptSection::required("output", "Output Contract", TREE_AGENT_OUTPUT_CONTRACT),
         ];
 
         sections.retain(|s| !s.content.is_empty() || s.required);
@@ -133,7 +128,6 @@ impl PromptBuilder {
             PromptSection::droppable("tree", "Tree Summary", input.tree_summary.trim()),
             PromptSection::droppable("assumptions", "Assumptions", input.assumptions.trim()),
             PromptSection::droppable("questions", "Open Questions", input.questions.trim()),
-            PromptSection::required("output", "Output Contract", EXECUTOR_OUTPUT_CONTRACT),
         ];
 
         sections.retain(|s| !s.content.is_empty() || s.required);
@@ -310,7 +304,7 @@ mod tests {
     /// Verifies prompt sections appear in deterministic order.
     ///
     /// Order matters for prompt consistency: contract → goal → history → failure →
-    /// selected → tree → assumptions → questions → output.
+    /// selected → tree → assumptions → questions.
     #[test]
     fn prompt_ordering_is_stable() {
         let input = PromptInputs {
@@ -337,7 +331,6 @@ mod tests {
                 "tree",
                 "assumptions",
                 "questions",
-                "output"
             ]
         );
     }

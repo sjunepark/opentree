@@ -12,10 +12,10 @@
 //!
 //! ```bash
 //! # Run all investigation tests
-//! cargo test --test investigation -- --ignored
+//! cargo test -p runner --test investigation_llm -- --ignored
 //!
 //! # Run specific test
-//! cargo test --test investigation codex_cli_available -- --ignored
+//! cargo test -p runner --test investigation_llm codex_cli_available -- --ignored
 //! ```
 
 use std::fs;

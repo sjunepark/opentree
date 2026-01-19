@@ -63,7 +63,12 @@ impl Executor for CodexExecutor {
                 .with_context(|| format!("create output dir {}", parent.display()))?;
         }
         let mut cmd = Command::new("codex");
-        cmd.arg("exec").arg("--sandbox").arg("danger-full-access");
+        cmd.arg("exec")
+            .arg("--sandbox")
+            .arg("danger-full-access")
+            // Allow running in directories without a git repository. Required for tests
+            // that use temp directories, and for workspaces not yet under version control.
+            .arg("--skip-git-repo-check");
 
         // Enable JSON streaming when stream_path is set
         if request.stream_path.is_some() {

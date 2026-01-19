@@ -3,7 +3,7 @@
 The "Prepare Context" phase (step 3 in the orchestration flow) has two parts:
 
 1. **`write_context()`** — Write ephemeral files for agent reference
-2. **`PromptBuilder.build()`** — Assemble the prompt sent to the executor
+2. **Agent prompt assembly** — `TreeAgent`/`ExecutorAgent` build prompt packs via `PromptBuilder`
 
 ## 1. Ephemeral Context Files
 
@@ -62,7 +62,7 @@ error[E0432]: unresolved import `bcrypt`
 
 ## 2. Prompt Pack Assembly
 
-`PromptBuilder` assembles a single prompt string sent to the agent (via `codex exec`). It reads from multiple sources and enforces a byte budget (default 40KB).
+`PromptBuilder` assembles a single prompt string sent to the agent (via `codex exec`). The tree and executor agents invoke it internally, using shared `PromptInputs`, and enforce a byte budget (default 40KB).
 
 ### Section Order (Deterministic)
 
@@ -120,11 +120,11 @@ If still over budget after dropping all droppable sections, the last section get
                    └────────┬────────┘◄── assumptions.md
                             │         ◄── questions.md
                             ▼
-                   ┌─────────────────┐
-                   │ PromptBuilder   │
-                   │  .build()       │
-                   │ (40KB budget)   │
-                   └────────┬────────┘
+   ┌────────────────────────────┐
+   │ TreeAgent / ExecutorAgent  │
+   │  PromptBuilder.build_*()   │
+   │     (40KB budget)          │
+   └──────────────┬─────────────┘
                             ▼
                    ┌─────────────────┐
                    │   PromptPack    │
@@ -144,5 +144,7 @@ If still over budget after dropping all droppable sections, the last section get
 
 ## Source Files
 
+- `runner/src/agents/tree.rs` — tree prompt assembly + execution
+- `runner/src/agents/executor.rs` — executor prompt assembly + execution
 - `runner/src/io/context.rs` — `write_context()`, `ContextPayload`
 - `runner/src/io/prompt.rs` — `PromptBuilder`, `PromptPack`, `PromptSection`
