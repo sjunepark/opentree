@@ -15,58 +15,42 @@
 //! # Execution Flow (Pseudo Code)
 //!
 //! ```text
-//! run_loop():
-//!   while true:
-//!     outcome = run_step()
-//!     if tree_complete() or stuck or max_iterations: break
-//!
 //! run_step():
 //!   // Pre-flight
-//!   enforce_git_policy()          // not on main/master, worktree clean
-//!   enforce_run_id_matches_goal() // GOAL.md run_id == run_state.run_id
-//!   enforce_on_run_branch()       // must be on runner/<run_id>
+//!   enforce_git_policy()           // not on main/master, worktree clean
+//!   enforce_run_id_matches_goal()  // GOAL.md run_id == run_state.run_id
+//!   enforce_on_run_branch()        // must be on runner/<run_id>
 //!
-//!   // Selection
 //!   prev_tree = load_tree()
-//!   selected = leftmost_open_leaf(prev_tree)  // depth-first, deterministic
+//!   selected = leftmost_open_leaf(prev_tree)
 //!   if is_stuck(selected): return StuckLeafError
 //!
-//!   // Context
 //!   write_context(goal, history, failure)
-//!   prompt_inputs = build_prompt_inputs(selected, tree_summary)
 //!
-//!   // Phase 1: Route by selected.next
-//!   if selected.next == decompose:
-//!     // Decomposer Agent (produce children)
-//!     decomposition = execute(decomposer_prompt)
-//!     add_children(selected, decomposition.children)
-//!     apply_state_updates(Decomposed)
-//!     return  // skip executor
+//!   match selected.next:
+//!     Decompose:
+//!       children = run_decomposer_agent()
+//!       next_tree = add_children(prev_tree, selected, children)
+//!       validate_contract(prev_tree, next_tree)
+//!       apply_state_updates(Decomposed)
+//!       write_tree(next_tree)
 //!
-//!   // Phase 2: Executor Agent (perform work)
-//!   output = execute(executor_prompt)
-//!   next_tree = load_tree()  // agent may have modified it
+//!     Execute:
+//!       output = run_executor_agent()
+//!       next_tree = load_tree()  // agent may have modified
+//!       validate_contract(prev_tree, next_tree)  // retry on violation
+//!       guard = run_guards_if_done(output.status)
+//!       apply_state_updates(output.status, guard)
+//!       write_tree(next_tree)
 //!
-//!       // Validate agent contract
-//!       if immutability_violated(prev_tree, next_tree): return Retry
-//!       if child_additions_restricted(prev_tree, next_tree): return Retry
+//!   // State transitions (runner-owned, agent cannot modify):
+//!   //   Done + Pass  → passes=true
+//!   //   Done + Fail  → attempts++
+//!   //   Retry        → attempts++
+//!   //   Decomposed   → unchanged (children added)
 //!
-//!       // Guards (only if agent claims Done)
-//!       guard_outcome = if output.status == Done:
-//!         run_guards()  // Pass | Fail
-//!       else:
-//!         Skipped
-//!
-//!       // State transitions (runner-owned, not agent-modifiable)
-//!       apply_state_updates(prev_tree, next_tree, output.status, guard_outcome)
-//!       //   Done + Pass  → passes=true
-//!       //   Done + Fail  → attempts++
-//!       //   Retry        → attempts++
-//!       //   Decomposed   → no change (children added)
-//!
-//!   // Persist
-//!   write_tree(next_tree)
-//!   write_run_state(iter++, last_status, last_guard)
+//!   // Persist & commit
+//!   write_run_state(iter++, status, guard)
 //!   write_iteration_log(meta, output, tree_before, tree_after)
 //!   git_commit()
 //! ```

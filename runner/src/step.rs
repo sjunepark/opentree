@@ -58,6 +58,32 @@ pub struct StepOutcome {
     pub guard: GuardOutcome,
 }
 
+#[derive(Debug)]
+struct StepAttemptResult {
+    output: AgentOutput,
+    guard: GuardOutcome,
+    tree_after: Node,
+    runner_error_log: Option<String>,
+}
+
+struct AttemptContext<'a, E: Executor> {
+    executor: &'a E,
+    root: &'a Path,
+    iter_dir: &'a Path,
+    prompt_inputs: &'a PromptInputs,
+    deadline: Instant,
+    prev_tree: &'a Node,
+    selected_id: &'a str,
+    tree_path: &'a Path,
+}
+
+struct ExecuteContext<'a, G: GuardRunner> {
+    guard_runner: &'a G,
+    schema_path: &'a Path,
+    guard_log_path: &'a Path,
+    guard_output_limit_bytes: usize,
+}
+
 /// Error when a stuck leaf is selected (hard-stop).
 #[derive(Debug, Clone)]
 pub struct StuckLeafError {
@@ -195,180 +221,67 @@ pub fn run_step<E: Executor, G: GuardRunner>(
     let guard_log_path = iter_dir.join("guard.log");
     let runner_error_log_path = iter_dir.join("runner_error.log");
 
-    let attempt = (|| -> Result<(AgentOutput, GuardOutcome, Node, Option<String>)> {
-        match selected.next {
-            NodeNext::Decompose => {
-                // Phase 1: decomposer agent expands the selected leaf into children.
-                let decomposition =
-                    decomposer_agent.run(executor, root, &iter_dir, &prompt_inputs, deadline)?;
-
-                if decomposition.children.is_empty() {
-                    return Err(anyhow!(
-                        "decomposer returned empty children list for '{}'",
-                        selected_id
-                    ));
-                }
-
-                let next_tree = decompose_tree(
-                    &prev_tree,
-                    &selected_id,
-                    &decomposition.children,
-                    cfg.max_attempts_default,
-                )?;
-
-                // Sanity-check: decomposition must not introduce children elsewhere.
-                let errors =
-                    validate_child_additions_restricted(&prev_tree, &next_tree, Some(&selected_id));
-                if !errors.is_empty() {
-                    return Err(anyhow!(
-                        "child-additions restriction failed after decomposition: {}",
-                        errors.join("; ")
-                    ));
-                }
-
-                validate_post_exec_tree(&prev_tree, &next_tree)?;
-                validate_status(
-                    &prev_tree,
-                    &next_tree,
-                    &selected_id,
-                    AgentStatus::Decomposed,
-                )?;
-
-                let output = AgentOutput {
-                    status: AgentStatus::Decomposed,
-                    summary: decomposition.summary,
-                };
-                let guard_outcome = GuardOutcome::Skipped;
-
-                let mut updated_tree = next_tree.clone();
-                apply_state_updates(
-                    &prev_tree,
-                    &mut updated_tree,
-                    &selected_id,
-                    output.status,
-                    guard_outcome,
-                )
-                .map_err(|err| anyhow!("state update failed: {err}"))?;
-                write_tree(&tree_path, &updated_tree)?;
-
-                Ok((output, guard_outcome, updated_tree, None))
-            }
-            NodeNext::Execute => {
-                // Phase 2: executor agent performs work for the selected node.
-                let output = executor_agent.run(
-                    executor,
-                    root,
-                    &iter_dir,
-                    &prompt_inputs,
-                    None,
-                    deadline,
-                )?;
-
-                let next_tree = match load_tree(&schema_path, &tree_path) {
-                    Ok(tree) => tree,
-                    Err(err) => {
-                        let msg = format!("tree invalid after executor: {err}");
-                        let (output, tree_after) =
-                            apply_agent_retry(&prev_tree, &selected_id, msg.clone())?;
-                        write_tree(&tree_path, &tree_after)?;
-                        return Ok((output, GuardOutcome::Skipped, tree_after, Some(msg)));
-                    }
-                };
-
-                // Treat post-exec tree violations as agent contract errors (retry with context),
-                // rather than hard-stopping the loop.
-                let mut contract_errors = Vec::new();
-                contract_errors.extend(check_passed_node_immutability(&prev_tree, &next_tree));
-                contract_errors.extend(validate_child_additions_restricted(
-                    &prev_tree, &next_tree, None,
-                ));
-                contract_errors.extend(validate_status_invariants(
-                    &prev_tree,
-                    &next_tree,
-                    &selected_id,
-                    output.status,
-                ));
-                if !contract_errors.is_empty() {
-                    contract_errors.sort();
-                    let msg = format!("agent contract violation: {}", contract_errors.join("; "));
-                    let (output, tree_after) =
-                        apply_agent_retry(&prev_tree, &selected_id, msg.clone())?;
-                    write_tree(&tree_path, &tree_after)?;
-                    return Ok((output, GuardOutcome::Skipped, tree_after, Some(msg)));
-                }
-
-                let guard_outcome = if output.status == AgentStatus::Done {
-                    // Guards only run when the agent claims completion, and they receive the remaining
-                    // budget from the per-iteration timeout.
-                    let guard_timeout = remaining_budget(deadline)?;
-                    run_guards_if_needed(
-                        output.status,
-                        guard_runner,
-                        &GuardRequest {
-                            workdir: root.to_path_buf(),
-                            log_path: guard_log_path.clone(),
-                            timeout: guard_timeout,
-                            output_limit_bytes: cfg.guard_output_limit_bytes,
-                        },
-                    )?
-                } else {
-                    GuardOutcome::Skipped
-                };
-
-                let mut updated_tree = next_tree.clone();
-                apply_state_updates(
-                    &prev_tree,
-                    &mut updated_tree,
-                    &selected_id,
-                    output.status,
-                    guard_outcome,
-                )
-                .map_err(|err| anyhow!("state update failed: {err}"))?;
-                write_tree(&tree_path, &updated_tree)?;
-
-                Ok((output, guard_outcome, updated_tree, None))
-            }
-        }
-    })();
-
-    let output: AgentOutput;
-    let guard_outcome: GuardOutcome;
-    let tree_after: Node;
-    let runner_error_log: Option<String>;
     let mut step_error: Option<anyhow::Error> = None;
-
-    match attempt {
-        Ok((out, guard, tree, err_log)) => {
-            output = out;
-            guard_outcome = guard;
-            tree_after = tree;
-            runner_error_log = err_log;
+    let attempt_ctx = AttemptContext {
+        executor,
+        root,
+        iter_dir: &iter_dir,
+        prompt_inputs: &prompt_inputs,
+        deadline,
+        prev_tree: &prev_tree,
+        selected_id: &selected_id,
+        tree_path: &tree_path,
+    };
+    let execute_ctx = ExecuteContext {
+        guard_runner,
+        schema_path: &schema_path,
+        guard_log_path: &guard_log_path,
+        guard_output_limit_bytes: cfg.guard_output_limit_bytes,
+    };
+    let attempt = match selected.next {
+        NodeNext::Decompose => {
+            attempt_decompose(&decomposer_agent, &attempt_ctx, cfg.max_attempts_default)
         }
+        NodeNext::Execute => attempt_execute(&executor_agent, &attempt_ctx, &execute_ctx),
+    };
+
+    let attempt_result = match attempt {
+        Ok(result) => result,
         Err(err) => {
             step_error = Some(err);
-
-            runner_error_log = Some(format!("runner error: {}", step_error.as_ref().unwrap()));
-
-            output = AgentOutput {
+            let runner_error_log = Some(format!("runner error: {}", step_error.as_ref().unwrap()));
+            let output = AgentOutput {
                 status: AgentStatus::Retry,
                 summary: "runner error (see runner_error.log)".to_string(),
             };
-            guard_outcome = GuardOutcome::Skipped;
+            let guard = GuardOutcome::Skipped;
             // Runner-internal failures do not consume node attempts. Attempts increment only from
             // successful agent outputs via `apply_state_updates()`.
-            tree_after = prev_tree.clone();
-
+            let tree_after = prev_tree.clone();
             write_tree(&tree_path, &tree_after)?;
+            StepAttemptResult {
+                output,
+                guard,
+                tree_after,
+                runner_error_log,
+            }
         }
-    }
+    };
 
-    if let Some(contents) = &runner_error_log {
+    if let Some(contents) = &attempt_result.runner_error_log {
         if let Some(parent) = runner_error_log_path.parent() {
             fs::create_dir_all(parent).with_context(|| format!("create {}", parent.display()))?;
         }
         fs::write(&runner_error_log_path, format!("{contents}\n"))
             .with_context(|| format!("write {}", runner_error_log_path.display()))?;
     }
+
+    let StepAttemptResult {
+        output,
+        guard: guard_outcome,
+        tree_after,
+        runner_error_log: _,
+    } = attempt_result;
 
     let guard_log = fs::read_to_string(&guard_log_path).ok();
     let meta = IterationMeta {
@@ -424,6 +337,189 @@ pub fn run_step<E: Executor, G: GuardRunner>(
         selected_id,
         status: output.status,
         guard: guard_outcome,
+    })
+}
+
+fn attempt_decompose<E: Executor>(
+    decomposer_agent: &DecomposerAgent,
+    ctx: &AttemptContext<'_, E>,
+    max_attempts_default: u32,
+) -> Result<StepAttemptResult> {
+    // Phase 1: decomposer agent expands the selected leaf into children.
+    let decomposition = decomposer_agent.run(
+        ctx.executor,
+        ctx.root,
+        ctx.iter_dir,
+        ctx.prompt_inputs,
+        ctx.deadline,
+    )?;
+
+    if decomposition.children.is_empty() {
+        return Err(anyhow!(
+            "decomposer returned empty children list for '{}'",
+            ctx.selected_id
+        ));
+    }
+
+    let next_tree = decompose_tree(
+        ctx.prev_tree,
+        ctx.selected_id,
+        &decomposition.children,
+        max_attempts_default,
+    )?;
+
+    // Sanity-check: decomposition must not introduce children elsewhere.
+    let errors =
+        validate_child_additions_restricted(ctx.prev_tree, &next_tree, Some(ctx.selected_id));
+    if !errors.is_empty() {
+        return Err(anyhow!(
+            "child-additions restriction failed after decomposition: {}",
+            errors.join("; ")
+        ));
+    }
+
+    validate_post_exec_tree(ctx.prev_tree, &next_tree)?;
+    validate_status(
+        ctx.prev_tree,
+        &next_tree,
+        ctx.selected_id,
+        AgentStatus::Decomposed,
+    )?;
+
+    let output = AgentOutput {
+        status: AgentStatus::Decomposed,
+        summary: decomposition.summary,
+    };
+    let guard_outcome = GuardOutcome::Skipped;
+    let updated_tree = apply_state_updates_and_write(
+        ctx.prev_tree,
+        ctx.tree_path,
+        ctx.selected_id,
+        output.status,
+        guard_outcome,
+        next_tree,
+    )?;
+
+    Ok(StepAttemptResult {
+        output,
+        guard: guard_outcome,
+        tree_after: updated_tree,
+        runner_error_log: None,
+    })
+}
+
+fn attempt_execute<E: Executor, G: GuardRunner>(
+    executor_agent: &ExecutorAgent,
+    ctx: &AttemptContext<'_, E>,
+    exec: &ExecuteContext<'_, G>,
+) -> Result<StepAttemptResult> {
+    // Phase 2: executor agent performs work for the selected node.
+    let output = executor_agent.run(
+        ctx.executor,
+        ctx.root,
+        ctx.iter_dir,
+        ctx.prompt_inputs,
+        None,
+        ctx.deadline,
+    )?;
+
+    let next_tree = match load_tree(exec.schema_path, ctx.tree_path) {
+        Ok(tree) => tree,
+        Err(err) => {
+            let msg = format!("tree invalid after executor: {err}");
+            return retry_with_log(ctx.prev_tree, ctx.tree_path, ctx.selected_id, msg);
+        }
+    };
+
+    // Treat post-exec tree violations as agent contract errors (retry with context),
+    // rather than hard-stopping the loop.
+    let mut contract_errors = Vec::new();
+    contract_errors.extend(check_passed_node_immutability(ctx.prev_tree, &next_tree));
+    contract_errors.extend(validate_child_additions_restricted(
+        ctx.prev_tree,
+        &next_tree,
+        None,
+    ));
+    contract_errors.extend(validate_status_invariants(
+        ctx.prev_tree,
+        &next_tree,
+        ctx.selected_id,
+        output.status,
+    ));
+    if !contract_errors.is_empty() {
+        contract_errors.sort();
+        let msg = format!("agent contract violation: {}", contract_errors.join("; "));
+        return retry_with_log(ctx.prev_tree, ctx.tree_path, ctx.selected_id, msg);
+    }
+
+    let guard_outcome = if output.status == AgentStatus::Done {
+        // Guards only run when the agent claims completion, and they receive the remaining
+        // budget from the per-iteration timeout.
+        let guard_timeout = remaining_budget(ctx.deadline)?;
+        run_guards_if_needed(
+            output.status,
+            exec.guard_runner,
+            &GuardRequest {
+                workdir: ctx.root.to_path_buf(),
+                log_path: exec.guard_log_path.to_path_buf(),
+                timeout: guard_timeout,
+                output_limit_bytes: exec.guard_output_limit_bytes,
+            },
+        )?
+    } else {
+        GuardOutcome::Skipped
+    };
+
+    let updated_tree = apply_state_updates_and_write(
+        ctx.prev_tree,
+        ctx.tree_path,
+        ctx.selected_id,
+        output.status,
+        guard_outcome,
+        next_tree,
+    )?;
+
+    Ok(StepAttemptResult {
+        output,
+        guard: guard_outcome,
+        tree_after: updated_tree,
+        runner_error_log: None,
+    })
+}
+
+fn apply_state_updates_and_write(
+    prev_tree: &Node,
+    tree_path: &Path,
+    selected_id: &str,
+    status: AgentStatus,
+    guard_outcome: GuardOutcome,
+    mut next_tree: Node,
+) -> Result<Node> {
+    apply_state_updates(
+        prev_tree,
+        &mut next_tree,
+        selected_id,
+        status,
+        guard_outcome,
+    )
+    .map_err(|err| anyhow!("state update failed: {err}"))?;
+    write_tree(tree_path, &next_tree)?;
+    Ok(next_tree)
+}
+
+fn retry_with_log(
+    prev_tree: &Node,
+    tree_path: &Path,
+    selected_id: &str,
+    msg: String,
+) -> Result<StepAttemptResult> {
+    let (output, tree_after) = apply_agent_retry(prev_tree, selected_id, msg.clone())?;
+    write_tree(tree_path, &tree_after)?;
+    Ok(StepAttemptResult {
+        output,
+        guard: GuardOutcome::Skipped,
+        tree_after,
+        runner_error_log: Some(msg),
     })
 }
 
