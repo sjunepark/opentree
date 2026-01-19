@@ -64,25 +64,16 @@ check: mdcheck rustfmt-check clippy test
 ci: check
 
 eval-list:
-  RUST_LOG=eval=info cargo run -p eval -- list
+  cargo run -p eval -- list
 
 eval-run CASE:
-  RUST_LOG=eval=info cargo run -p eval -- run {{CASE}}
-
-eval-run-debug CASE:
-  RUST_LOG=eval=debug cargo run -p eval -- run {{CASE}}
+  cargo run -p eval -- run {{CASE}}
 
 eval-continue CASE:
-  RUST_LOG=eval=info cargo run -p eval -- run {{CASE}} --continue
-
-eval-continue-debug CASE:
-  RUST_LOG=eval=debug cargo run -p eval -- run {{CASE}} --continue
-
-eval-report CASE:
-  RUST_LOG=eval=info cargo run -p eval -- report {{CASE}}
+  cargo run -p eval -- run {{CASE}} --continue
 
 eval-clean CASE:
-  RUST_LOG=eval=info cargo run -p eval -- clean {{CASE}}
+  cargo run -p eval -- clean {{CASE}}
 
 # Runner UI commands
 ui-install:
@@ -94,28 +85,15 @@ ui-dev:
 ui-build:
   cd ui && bun run build
 
-ui-server PROJECT_DIR=".":
-  RUST_LOG=runner_ui=info cargo run -p runner-ui -- --project-dir {{PROJECT_DIR}}
-
-# Mount UI to view static project state (no file watching)
-# Usage: just ui-mount calculator-go
-#        just ui-mount eval/workspaces/calculator-go_20250101_120000
-ui-mount PROJECT:
+# Run UI backend server
+# Usage: just ui-eval calculator-go         (expands to eval/workspaces/calculator-go_latest)
+#        just ui-eval ./my-project          (uses path as-is)
+ui-eval PROJECT=".":
   #!/usr/bin/env bash
   set -euo pipefail
   PROJECT_PATH="{{PROJECT}}"
-  # Shorthand: calculator-go → eval/workspaces/calculator-go_latest
   [[ ! "$PROJECT_PATH" == *"/"* ]] && PROJECT_PATH="eval/workspaces/${PROJECT_PATH}_latest"
-  [[ -L "$PROJECT_PATH" ]] && PROJECT_PATH=$(readlink -f "$PROJECT_PATH")
-  [[ ! -d "$PROJECT_PATH/.runner" ]] && { echo "Error: no .runner/ in $PROJECT_PATH"; exit 1; }
-  echo "Mounting: $PROJECT_PATH"
-  RUST_LOG=runner_ui=info cargo run -p runner-ui -- --project-dir "$PROJECT_PATH" --static-mode &
-  SERVER_PID=$!
-  trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
-  sleep 1
-  [[ ! -d "ui/node_modules" ]] && (cd ui && bun install)
-  echo "Open http://localhost:5173"
-  cd ui && bun run dev
+  cargo run -p runner-ui -- --project-dir "$PROJECT_PATH"
 
 # Prompt Lab commands
 lab-list AGENT="decomposer":
@@ -134,10 +112,10 @@ lab-install:
   cd runner/prompt_lab/dashboard && bun install
 
 # Run eval with UI monitoring (runs eval, backend, and frontend together)
-# Usage: just eval-with-ui calculator-go
-#        just eval-with-ui calculator-go --continue
+# Usage: just eval-ui calculator-go
+#        just eval-ui calculator-go --continue
 #        Then open http://localhost:5173
-eval-with-ui CASE *FLAGS:
+eval-ui CASE *FLAGS:
   #!/usr/bin/env bash
   set -euo pipefail
   WORKSPACE_LINK="eval/workspaces/{{CASE}}_latest"
@@ -159,7 +137,7 @@ eval-with-ui CASE *FLAGS:
   else
     echo "Starting eval for {{CASE}} in background..."
   fi
-  RUST_LOG=eval=info cargo run -p eval -- run {{CASE}} {{FLAGS}} &
+  cargo run -p eval -- run {{CASE}} {{FLAGS}} &
   EVAL_PID=$!
   if ! $CONTINUE_MODE; then
     sleep 2
@@ -175,7 +153,7 @@ eval-with-ui CASE *FLAGS:
     echo ""
     echo "Workspace: $(readlink "$WORKSPACE_LINK")"
     echo "Starting backend server..."
-    RUST_LOG=runner_ui=info cargo run -p runner-ui -- --project-dir "$WORKSPACE_LINK" &
+    cargo run -p runner-ui -- --project-dir "$WORKSPACE_LINK" &
     SERVER_PID=$!
     if [[ ! -d "ui/node_modules" ]]; then
       echo "Installing frontend dependencies..."

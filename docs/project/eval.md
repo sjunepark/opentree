@@ -8,7 +8,6 @@ The `eval` crate runs real runner loops against declarative test cases for local
 just eval-list                    # List available cases
 just eval-run calculator-go       # Run a case once
 just eval-run calculator-go --runs 5  # Run multiple times
-just eval-report calculator-go    # Show aggregated results
 just eval-clean calculator-go     # Remove workspace and results
 ```
 
@@ -191,18 +190,6 @@ eval/results/calculator-go/eval-20260118_120000/
     }
   ]
 }
-```
-
-## Reporting
-
-`just eval-report <case-id>` shows aggregated results:
-
-```text
-calculator-go: 3 runs
-  success: 2 (66.7%)
-  fail:    1 (33.3%)
-  stuck:   0
-  error:   0
 ```
 
 ## Command Limits

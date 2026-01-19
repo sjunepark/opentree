@@ -58,7 +58,6 @@ The `eval` crate runs real runner loops against declarative cases for local expe
 ```bash
 just eval-list
 just eval-run calculator-go
-just eval-report calculator-go
 ```
 
 Case files live in `eval/cases/*.toml`. Workspaces and results are stored under `eval/workspaces/`
