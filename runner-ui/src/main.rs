@@ -35,6 +35,10 @@ struct Args {
     /// Directory containing UI static files (defaults to ./ui/dist relative to binary)
     #[arg(long)]
     ui_dir: Option<PathBuf>,
+
+    /// Static mode: disable file watching (for viewing historical state)
+    #[arg(long, default_value = "false")]
+    static_mode: bool,
 }
 
 #[tokio::main]
@@ -53,8 +57,12 @@ async fn main() -> anyhow::Result<()> {
 
     let state = AppState::new(project_dir.clone());
 
-    // Start file watcher
-    sse::start_file_watcher(state.clone());
+    // Start file watcher (unless in static mode)
+    if args.static_mode {
+        info!("static mode - file watching disabled");
+    } else {
+        sse::start_file_watcher(state.clone());
+    }
 
     // Build router
     let api_router = routes::api_router();

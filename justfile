@@ -97,6 +97,26 @@ ui-build:
 ui-server PROJECT_DIR=".":
   RUST_LOG=runner_ui=info cargo run -p runner-ui -- --project-dir {{PROJECT_DIR}}
 
+# Mount UI to view static project state (no file watching)
+# Usage: just ui-mount calculator-go
+#        just ui-mount eval/workspaces/calculator-go_20250101_120000
+ui-mount PROJECT:
+  #!/usr/bin/env bash
+  set -euo pipefail
+  PROJECT_PATH="{{PROJECT}}"
+  # Shorthand: calculator-go → eval/workspaces/calculator-go_latest
+  [[ ! "$PROJECT_PATH" == *"/"* ]] && PROJECT_PATH="eval/workspaces/${PROJECT_PATH}_latest"
+  [[ -L "$PROJECT_PATH" ]] && PROJECT_PATH=$(readlink -f "$PROJECT_PATH")
+  [[ ! -d "$PROJECT_PATH/.runner" ]] && { echo "Error: no .runner/ in $PROJECT_PATH"; exit 1; }
+  echo "Mounting: $PROJECT_PATH"
+  RUST_LOG=runner_ui=info cargo run -p runner-ui -- --project-dir "$PROJECT_PATH" --static-mode &
+  SERVER_PID=$!
+  trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+  sleep 1
+  [[ ! -d "ui/node_modules" ]] && (cd ui && bun install)
+  echo "Open http://localhost:5173"
+  cd ui && bun run dev
+
 # Run eval with UI monitoring (runs eval, backend, and frontend together)
 # Usage: just eval-with-ui calculator-go
 #        just eval-with-ui calculator-go --continue

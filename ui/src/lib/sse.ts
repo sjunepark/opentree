@@ -18,7 +18,10 @@ interface ChangeEvent {
 
 let eventSource: EventSource | null = null;
 let reconnectTimeout: number | null = null;
+let staticModeInterval: number | null = null;
 const handlers: Set<ChangeHandler> = new Set();
+
+const STATIC_MODE_THRESHOLD_MS = 10000;
 
 export function subscribe(handler: ChangeHandler): () => void {
   handlers.add(handler);
@@ -34,13 +37,26 @@ export function connect(): void {
 
   eventSource.addEventListener('connected', () => {
     connection.sseConnected = true;
+    connection.lastEventTime = Date.now();
     if (reconnectTimeout) {
       clearTimeout(reconnectTimeout);
       reconnectTimeout = null;
     }
+    // Start static mode detection
+    if (!staticModeInterval) {
+      staticModeInterval = window.setInterval(() => {
+        if (connection.sseConnected && connection.lastEventTime !== null) {
+          if (Date.now() - connection.lastEventTime > STATIC_MODE_THRESHOLD_MS) {
+            connection.staticMode = true;
+          }
+        }
+      }, 5000);
+    }
   });
 
   eventSource.addEventListener('change', (event) => {
+    connection.lastEventTime = Date.now();
+    connection.staticMode = false;
     try {
       const data: ChangeEvent = JSON.parse(event.data);
       handlers.forEach((handler) => handler(data));
@@ -69,9 +85,15 @@ export function disconnect(): void {
     clearTimeout(reconnectTimeout);
     reconnectTimeout = null;
   }
+  if (staticModeInterval) {
+    clearInterval(staticModeInterval);
+    staticModeInterval = null;
+  }
   if (eventSource) {
     eventSource.close();
     eventSource = null;
   }
   connection.sseConnected = false;
+  connection.staticMode = false;
+  connection.lastEventTime = null;
 }

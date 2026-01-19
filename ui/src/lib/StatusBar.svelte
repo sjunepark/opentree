@@ -36,6 +36,9 @@
     <span class="connection" class:connected={connection.sseConnected}>
       {connection.sseConnected ? '● Connected' : '○ Disconnected'}
     </span>
+    {#if connection.staticMode}
+      <span class="static-badge">Static</span>
+    {/if}
   </div>
 
   <div class="center">
@@ -131,5 +134,14 @@
   .error {
     color: #f87171;
     cursor: help;
+  }
+
+  .static-badge {
+    background: #475569;
+    color: #e2e8f0;
+    padding: 0.125rem 0.375rem;
+    border-radius: 0.25rem;
+    font-size: 0.625rem;
+    text-transform: uppercase;
   }
 </style>

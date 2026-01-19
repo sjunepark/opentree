@@ -13,6 +13,8 @@ export const connection = $state({
   sseConnected: false,
   loading: true,
   error: null as string | null,
+  staticMode: false,
+  lastEventTime: null as number | null,
 });
 
 // Core data from the runner
