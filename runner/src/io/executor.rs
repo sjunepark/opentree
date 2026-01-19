@@ -64,6 +64,8 @@ impl Executor for CodexExecutor {
         }
         let mut cmd = Command::new("codex");
         cmd.arg("exec")
+            .arg("-c")
+            .arg("model_reasoning_effort=medium")
             .arg("--sandbox")
             .arg("danger-full-access")
             // Allow running in directories without a git repository. Required for tests

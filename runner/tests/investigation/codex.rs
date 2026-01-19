@@ -69,6 +69,8 @@ fn output_schema_produces_valid_json() {
     let mut child = Command::new("codex")
         .args([
             "exec",
+            "-c",
+            "model_reasoning_effort=medium",
             "--output-schema",
             schema_dest.to_str().unwrap(),
             "--output-last-message",
@@ -121,6 +123,8 @@ fn output_last_message_writes_to_path() {
     let mut child = Command::new("codex")
         .args([
             "exec",
+            "-c",
+            "model_reasoning_effort=medium",
             "--output-schema",
             schema_dest.to_str().unwrap(),
             "--output-last-message",
@@ -163,6 +167,8 @@ fn schema_with_enum_constrains_values() {
     let mut child = Command::new("codex")
         .args([
             "exec",
+            "-c",
+            "model_reasoning_effort=medium",
             "--output-schema",
             schema_dest.to_str().unwrap(),
             "--output-last-message",
@@ -211,6 +217,8 @@ fn schema_enforced_with_arbitrary_prompt() {
     let mut child = Command::new("codex")
         .args([
             "exec",
+            "-c",
+            "model_reasoning_effort=medium",
             "--output-schema",
             schema_dest.to_str().unwrap(),
             "--output-last-message",
@@ -268,6 +276,8 @@ fn codex_json_streams_events() {
     let mut child = Command::new("codex")
         .args([
             "exec",
+            "-c",
+            "model_reasoning_effort=medium",
             "--json",
             "--output-schema",
             schema_dest.to_str().unwrap(),
