@@ -7,7 +7,7 @@
   }
 
   let { event, index }: Props = $props();
-  let expanded = $state(false);
+  let expanded = $state(true);
   let showRaw = $state(false);
 
   // Get event type with color coding

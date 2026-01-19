@@ -9,7 +9,7 @@ function makeLongText(length: number): string {
 }
 
 describe('EventLine', () => {
-  it('expands long content instead of truncating it', async () => {
+  it('shows long content expanded by default', async () => {
     const user = userEvent.setup();
     const longText = makeLongText(320);
 
@@ -20,9 +20,10 @@ describe('EventLine', () => {
       },
     });
 
-    expect(screen.getByText('Show more')).toBeInTheDocument();
-    await user.click(screen.getByText('Show more'));
     expect(screen.getByText(longText)).toBeInTheDocument();
     expect(screen.getByText('Show less')).toBeInTheDocument();
+
+    await user.click(screen.getByText('Show less'));
+    expect(screen.getByText('Show more')).toBeInTheDocument();
   });
 });

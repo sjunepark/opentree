@@ -46,13 +46,13 @@
       </div>
       <pre class="command">{event.command}</pre>
       {#if event.output}
-        <details class="output" open={event.status === 'running'}>
+        <details class="output" open>
           <summary>Output</summary>
           <pre>{event.output}</pre>
         </details>
       {/if}
     {:else if event.kind === 'reasoning'}
-      <details class="reasoning">
+      <details class="reasoning" open>
         <summary>{extractFirstBold(event.text) ?? 'Reasoning'}</summary>
         <pre>{event.text}</pre>
       </details>
