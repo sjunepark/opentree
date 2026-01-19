@@ -16,6 +16,7 @@ docs/
 
 | Document | Description |
 |----------|-------------|
+| `agents.md` | Agent module boundaries and contracts |
 | `context-preparation.md` | Prompt building, ephemeral context files, budget enforcement |
 | `run-id-lifecycle.md` | Run ID generation, start/step flows, identity enforcement |
 

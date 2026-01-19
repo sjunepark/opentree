@@ -6,29 +6,27 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, anyhow};
 
+use crate::agents::executor::ExecutorAgent;
+use crate::agents::tree::TreeAgent;
+use crate::core::budget::remaining_budget;
 use crate::core::child_additions::validate_child_additions_restricted;
 use crate::core::immutability::check_passed_node_immutability;
 use crate::core::path::node_path;
 use crate::core::selector::{is_stuck, leftmost_open_leaf};
 use crate::core::state_update::apply_state_updates;
 use crate::core::status_validator::validate_status_invariants;
-use crate::core::types::{
-    AgentOutput, AgentStatus, GuardOutcome, TreeChildSpec, TreeDecision, TreeDecisionKind,
-};
+use crate::core::types::{AgentOutput, AgentStatus, GuardOutcome, TreeChildSpec, TreeDecisionKind};
 use crate::io::config::load_config;
 use crate::io::context::{ContextPayload, write_context};
-use crate::io::executor::{ExecRequest, Executor, execute_and_load, execute_and_load_json};
+use crate::io::executor::Executor;
 use crate::io::git::Git;
 use crate::io::goal::read_goal_id;
 use crate::io::guards::{GuardRequest, GuardRunner, run_guards_if_needed};
 use crate::io::iteration_log::{IterationMeta, IterationWriteRequest, write_iteration};
-use crate::io::prompt::{PromptBuilder, PromptInputs};
+use crate::io::prompt::PromptInputs;
 use crate::io::run_state::{RunState, load_run_state, write_run_state};
 use crate::io::tree_store::{load_tree, write_tree};
 use crate::tree::Node;
-
-const TREE_DECISION_SCHEMA: &str = include_str!("../schemas/tree_decision.schema.json");
-const EXECUTOR_OUTPUT_SCHEMA: &str = include_str!("../schemas/executor_output.schema.json");
 
 /// Configuration for a single step iteration.
 #[derive(Debug, Clone)]
@@ -119,8 +117,6 @@ pub fn run_step<E: Executor, G: GuardRunner>(
     let tree_path = state_dir.join("tree.json");
     let schema_path = state_dir.join("schema.json");
     let run_state_path = state_dir.join("run_state.json");
-    let tree_decision_schema_path = state_dir.join("tree_decision.schema.json");
-    let executor_output_schema_path = state_dir.join("executor_output.schema.json");
     let config_path = state_dir.join("config.toml");
     let cfg = load_config(&config_path)?;
     let deadline = start + Duration::from_secs(cfg.iteration_timeout_secs);
@@ -177,8 +173,16 @@ pub fn run_step<E: Executor, G: GuardRunner>(
     let tree_summary = summarize_tree(&prev_tree, 200);
     let prompt_inputs =
         PromptInputs::from_root(root, selected_path, selected.to_owned(), tree_summary)?;
-    let prompt_builder = PromptBuilder::new(config.prompt_budget_bytes);
-    let tree_agent_prompt = prompt_builder.build_tree_agent(&prompt_inputs).render();
+    let tree_agent = TreeAgent::new(
+        &state_dir,
+        config.prompt_budget_bytes,
+        cfg.executor_output_limit_bytes,
+    );
+    let executor_agent = ExecutorAgent::new(
+        &state_dir,
+        config.prompt_budget_bytes,
+        cfg.executor_output_limit_bytes,
+    );
 
     let iter_dir = root
         .join(".runner")
@@ -192,22 +196,8 @@ pub fn run_step<E: Executor, G: GuardRunner>(
     let runner_error_log_path = iter_dir.join("runner_error.log");
 
     let attempt = (|| -> Result<(AgentOutput, GuardOutcome, Node, Option<String>)> {
-        write_schema(&tree_decision_schema_path, TREE_DECISION_SCHEMA)?;
-        write_schema(&executor_output_schema_path, EXECUTOR_OUTPUT_SCHEMA)?;
-
         // Phase 1: tree agent decides whether to decompose or execute.
-        let planner_timeout = remaining_budget(deadline)?;
-        let planner_request = ExecRequest {
-            workdir: root.to_path_buf(),
-            prompt: tree_agent_prompt.clone(),
-            output_schema_path: tree_decision_schema_path.clone(),
-            output_path: iter_dir.join("planner_output.json"),
-            executor_log_path: iter_dir.join("planner_executor.log"),
-            timeout: planner_timeout,
-            output_limit_bytes: cfg.executor_output_limit_bytes,
-            stream_path: Some(iter_dir.join("planner_stream.jsonl")),
-        };
-        let tree_decision: TreeDecision = execute_and_load_json(executor, &planner_request)?;
+        let tree_decision = tree_agent.run(executor, root, &iter_dir, &prompt_inputs, deadline)?;
 
         match tree_decision.decision {
             TreeDecisionKind::Decompose => {
@@ -266,22 +256,14 @@ pub fn run_step<E: Executor, G: GuardRunner>(
             }
             TreeDecisionKind::Execute => {
                 // Phase 2: executor agent performs work for the selected node.
-                let executor_prompt = prompt_builder
-                    .build_executor(&prompt_inputs, Some(tree_decision.summary.as_str()))
-                    .render();
-                let exec_timeout = remaining_budget(deadline)?;
-                let exec_request = ExecRequest {
-                    workdir: root.to_path_buf(),
-                    prompt: executor_prompt,
-                    output_schema_path: executor_output_schema_path.clone(),
-                    output_path: iter_dir.join("output.json"),
-                    executor_log_path: iter_dir.join("executor.log"),
-                    timeout: exec_timeout,
-                    output_limit_bytes: cfg.executor_output_limit_bytes,
-                    stream_path: Some(iter_dir.join("stream.jsonl")),
-                };
-
-                let output = execute_and_load(executor, &exec_request)?;
+                let output = executor_agent.run(
+                    executor,
+                    root,
+                    &iter_dir,
+                    &prompt_inputs,
+                    Some(tree_decision.summary.as_str()),
+                    deadline,
+                )?;
 
                 let next_tree = match load_tree(&schema_path, &tree_path) {
                     Ok(tree) => tree,
@@ -453,16 +435,6 @@ fn load_or_default_run_state(path: &Path) -> Result<RunState> {
     Ok(RunState::default())
 }
 
-fn remaining_budget(deadline: Instant) -> Result<Duration> {
-    let remaining = deadline
-        .checked_duration_since(Instant::now())
-        .unwrap_or(Duration::from_secs(0));
-    if remaining.is_zero() {
-        return Err(anyhow!("iteration timed out"));
-    }
-    Ok(remaining)
-}
-
 fn enforce_git_policy_pre_step(root: &Path) -> Result<()> {
     let git = Git::new(root);
     let branch = git.current_branch()?;
@@ -551,14 +523,6 @@ fn commit_iteration(
         return Err(anyhow!("expected changes to commit for iteration {iter}"));
     }
     Ok(())
-}
-
-fn write_schema(path: &Path, contents: &str) -> Result<()> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)
-            .with_context(|| format!("create schema dir {}", parent.display()))?;
-    }
-    fs::write(path, contents).with_context(|| format!("write schema {}", path.display()))
 }
 
 fn validate_post_exec_tree(prev: &Node, next: &Node) -> Result<()> {

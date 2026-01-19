@@ -12,6 +12,7 @@
 //! Orchestration modules ([`step`], [`start`], [`select`], [`validate`]) coordinate
 //! core logic with I/O to implement CLI commands.
 
+pub mod agents;
 pub mod core;
 pub mod exit_codes;
 pub mod io;

@@ -3,6 +3,7 @@
 //! Core modules must be free of I/O side effects. They operate on in-memory
 //! data structures and return deterministic outputs suitable for tests.
 
+pub mod budget;
 pub mod child_additions;
 pub mod immutability;
 pub mod invariants;
