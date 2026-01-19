@@ -112,7 +112,12 @@ fn tree_agent_decomposes_complicated_goal() {
             "Unit + integration tests added",
         ],
     );
-    debug!(title = %inputs.selected_node.title, "running tree agent");
+    debug!(
+        title = %inputs.selected_node.title,
+        goal = %inputs.selected_node.goal,
+        acceptance = ?inputs.selected_node.acceptance,
+        "running tree agent"
+    );
 
     let decision = agent
         .run(
@@ -129,6 +134,7 @@ fn tree_agent_decomposes_complicated_goal() {
         children = decision.children.len(),
         "tree agent returned"
     );
+    debug!(summary = %decision.summary, "decision summary");
 
     assert_eq!(
         decision.decision,
@@ -141,7 +147,13 @@ fn tree_agent_decomposes_complicated_goal() {
     );
 
     for (i, child) in decision.children.iter().enumerate() {
-        debug!(index = i, title = %child.title, "child spec");
+        debug!(
+            index = i,
+            title = %child.title,
+            goal = %child.goal,
+            acceptance = ?child.acceptance,
+            "child spec"
+        );
         assert!(
             !child.title.trim().is_empty(),
             "child title must be non-empty"
@@ -176,7 +188,12 @@ fn tree_agent_executes_simple_goal() {
         "Update README.md to fix the spelling of the project name in the first header line.",
         &["README header spelling is corrected"],
     );
-    debug!(title = %inputs.selected_node.title, "running tree agent");
+    debug!(
+        title = %inputs.selected_node.title,
+        goal = %inputs.selected_node.goal,
+        acceptance = ?inputs.selected_node.acceptance,
+        "running tree agent"
+    );
 
     let decision = agent
         .run(
@@ -193,6 +210,7 @@ fn tree_agent_executes_simple_goal() {
         children = decision.children.len(),
         "tree agent returned"
     );
+    debug!(summary = %decision.summary, "decision summary");
 
     assert_eq!(
         decision.decision,
