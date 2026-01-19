@@ -1,0 +1,10 @@
+# Cached results (regenerated on demand)
+results/
+
+# Temporary execution files
+tmp/
+
+# Dashboard build artifacts
+dashboard/build/
+dashboard/node_modules/
+dashboard/.svelte-kit/

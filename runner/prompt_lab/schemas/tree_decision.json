@@ -1,0 +1,31 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["decision", "summary", "children"],
+  "properties": {
+    "decision": {
+      "type": "string",
+      "enum": ["execute", "decompose"]
+    },
+    "summary": {
+      "type": "string"
+    },
+    "children": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["title", "goal", "acceptance"],
+        "properties": {
+          "title": { "type": "string" },
+          "goal": { "type": "string" },
+          "acceptance": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      }
+    }
+  }
+}

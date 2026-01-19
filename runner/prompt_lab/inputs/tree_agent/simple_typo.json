@@ -1,0 +1,15 @@
+{
+  "id": "simple_typo",
+  "name": "Simple Typo Fix",
+  "selected_node": {
+    "id": "node-1",
+    "title": "Fix typo",
+    "goal": "Fix the typo 'teh' -> 'the' in README.md line 42",
+    "acceptance": [
+      "Typo is corrected"
+    ]
+  },
+  "tree_summary": "root\n└── Fix typo (selected)",
+  "context_goal": "Clean up documentation",
+  "expected_decision": "execute"
+}

@@ -1,0 +1,17 @@
+{
+  "id": "complex_oauth",
+  "name": "Complex OAuth Implementation",
+  "selected_node": {
+    "id": "node-1",
+    "title": "Implement Auth",
+    "goal": "Implement end-to-end OAuth2 login with RBAC and audit logging",
+    "acceptance": [
+      "Users can log in via Google",
+      "Roles enforced on all endpoints",
+      "All auth events logged"
+    ]
+  },
+  "tree_summary": "root\n└── Implement Auth (selected)",
+  "context_goal": "Build a secure authentication system for the application",
+  "expected_decision": "decompose"
+}

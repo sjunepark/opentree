@@ -1,0 +1,18 @@
+{
+  "id": "medium_refactor",
+  "name": "Medium Complexity Refactor",
+  "selected_node": {
+    "id": "node-2",
+    "title": "Extract helper functions",
+    "goal": "Extract repeated validation logic from UserController into a ValidationHelper class",
+    "acceptance": [
+      "ValidationHelper exists with extracted methods",
+      "UserController uses ValidationHelper",
+      "All existing tests pass"
+    ]
+  },
+  "tree_summary": "root\n├── Setup project\n└── Extract helper functions (selected)",
+  "context_goal": "Improve code maintainability through refactoring",
+  "context_history": "Previously analyzed the codebase and identified 3 places with duplicated validation logic.",
+  "expected_decision": "execute"
+}
