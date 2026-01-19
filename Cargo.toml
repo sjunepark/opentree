@@ -1,3 +1,13 @@
 [workspace]
 resolver = "2"
 members = ["eval", "runner", "runner-ui", "runner/prompt_lab"]
+
+[workspace.lints.rust]
+unsafe_code = "deny"
+
+[workspace.lints.clippy]
+# Start with default lints, enable specific useful ones
+enum_glob_use = "warn"
+wildcard_imports = "warn"
+explicit_iter_loop = "warn"
+semicolon_if_nothing_returned = "warn"
