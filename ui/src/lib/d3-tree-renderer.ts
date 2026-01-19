@@ -218,17 +218,17 @@ function setupSvg(
   const zoomG = svg.append('g').attr('class', 'zoom-container');
   const contentG = zoomG.append('g').attr('class', 'content');
 
-  // Define world bounds for translateExtent (keep tree visible when panning)
-  // Note: bounds use D3's coordinate system (minY/maxY = horizontal, minX/maxX = vertical)
+  // Define bounds for constraining pan/zoom to content edges
   const worldBounds: [[number, number], [number, number]] = [
-    [viewBoxX - width, viewBoxY - height],
-    [viewBoxX + width * 2, viewBoxY + height * 2],
+    [viewBoxX, viewBoxY],
+    [viewBoxX + width, viewBoxY + height],
   ];
 
   // Create zoom behavior
   const zoom = d3
     .zoom<SVGSVGElement, unknown>()
-    .scaleExtent([0.25, 2]) // 25% to 200% zoom
+    .extent(worldBounds)
+    .scaleExtent([1, 4]) // No zoom out past initial view, up to 4x zoom in
     .translateExtent(worldBounds)
     // Filter: allow zoom on wheel events, but only start drag-pan from empty space (not nodes)
     .filter((event: Event) => {
