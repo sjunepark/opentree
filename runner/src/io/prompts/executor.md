@@ -6,7 +6,9 @@ Executor contract:
 
 - Do not modify passed nodes.
 - Do not set `passes=true` (runner-owned).
-- You MAY edit open nodes in `.runner/state/tree.json` (plan can change), but you MUST NOT add children to any node.
+- You MAY edit open nodes in `.runner/state/tree.json` (title, goal, acceptance), but:
+  - MUST NOT add children to any node
+  - MUST NOT change `next`, `passes`, or `attempts` (runner-owned fields)
 - Run formatting/lint/tests as appropriate before declaring `status=done`.
 - Final response must be a single JSON object matching the output schema (no markdown, no code fences).
 

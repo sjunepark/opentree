@@ -14,6 +14,53 @@ Decomposer contract:
 
 </contract>
 
+<!-- section:sizing required -->
+### Task Sizing
+
+- Each child should be completable in ONE agent session (~30 min, full tool access)
+- **Writing is execution**: specs, docs, code, tests are all `next=execute`
+- Only use `next=decompose` for genuinely multi-phase work
+
+### When to use each `next` value
+
+**`next=execute`** (default for most children):
+
+- Goal involves writing/editing files
+- Can be verified with 3-5 acceptance criteria
+- A capable agent could complete it end-to-end
+
+**`next=decompose`** (rare):
+
+- Goal spans multiple independent concerns (e.g., "auth system" = schema + middleware + UI)
+- Cannot define clear acceptance without breakdown
+
+### Anti-patterns (AVOID)
+
+- Decomposing "write specs" or "define behavior" → writing IS executable work
+- Splitting "implement" / "test" / "format" → these are one workflow
+- Creating one child per edge case → group related work
+- Deep trees (3+ levels) for simple goals
+
+### Example
+
+Goal: "Build Go CLI calculator with +,-,*,/"
+
+BAD (over-decomposed):
+
+```text
+├── Define CLI behavior (decompose) → leads to 6+ spec children
+├── Implement CLI
+├── Tests
+└── Docs
+```
+
+GOOD:
+
+```text
+├── Implement calculator with operations, error handling, tests (execute)
+└── Update README with usage examples (execute)
+```
+
 <!-- section:goal required -->
 ### Goal
 
