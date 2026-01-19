@@ -5,26 +5,42 @@
   import { createTreeRenderer } from './d3-tree-renderer';
 
   interface Props {
+    /** The root node of the tree to render */
     tree: Node;
+    /** Optional node ID to focus on instead of the default leftmost open leaf */
     activeNodeId?: string | null;
   }
 
   let { tree, activeNodeId = null }: Props = $props();
 
-  // Container ref for auto-scroll
   let containerEl: HTMLDivElement;
 
-  // Manually expanded node IDs (persists across clicks)
+  /**
+   * User-expanded node IDs that persist across clicks.
+   * Updated by `handleNodeClick` when toggling expand/collapse.
+   * Reset by tree change effect.
+   */
   let manuallyExpanded = $state<Set<string>>(new Set());
 
-  // Reset expansions when tree changes
+  /**
+   * Resets expansion state when tree identity changes.
+   * Clears both manual expansions and selection.
+   *
+   * Triggers: `tree.id` change
+   * Mutates: `manuallyExpanded`, `selection` (via selectNode)
+   */
   $effect(() => {
     const _ = tree.id;
     manuallyExpanded = new Set();
     selectNode(null);
   });
 
-  // Default path: leftmost open leaf or activeNodeId prop
+  /**
+   * Base path from root to the "focus" node.
+   * Uses `activeNodeId` prop if provided, otherwise finds the leftmost open leaf.
+   *
+   * Depends on: `tree`, `activeNodeId`
+   */
   const defaultPath = $derived.by(() => {
     if (activeNodeId) {
       return new Set(findPathToNode(tree, activeNodeId));
@@ -34,7 +50,12 @@
     return new Set(findPathToNode(tree, leaf.id));
   });
 
-  // Expanded path: default + all manually expanded paths (controls visibility)
+  /**
+   * All visible nodes in the tree (controls which nodes are rendered).
+   * Combines the default path with all manually expanded branches.
+   *
+   * Depends on: `defaultPath`, `manuallyExpanded`, `tree`
+   */
   const expandedPath = $derived.by(() => {
     const combined = new Set(defaultPath);
     for (const nodeId of manuallyExpanded) {
@@ -46,31 +67,35 @@
     return combined;
   });
 
-  // Highlighted path: only the selected node's ancestors (controls blue styling)
+  /**
+   * Nodes to highlight with blue styling (selected node's ancestry).
+   * Falls back to `defaultPath` when nothing is selected.
+   *
+   * Depends on: `selection.nodeId`, `tree`, `defaultPath`
+   */
   const highlightedPath = $derived.by(() => {
     if (selection.nodeId) {
       return new Set(findPathToNode(tree, selection.nodeId));
     }
-    // When no selection, highlight the default path
     return defaultPath;
   });
 
-  // Handle node click - toggle expand/collapse, always select
+  /**
+   * Handles node click: toggles expand/collapse and updates selection.
+   * - Expanded nodes (children visible) → collapse by removing descendants from manuallyExpanded
+   * - Collapsed nodes → expand by adding leftmost open leaf path to manuallyExpanded
+   */
   function handleNodeClick(node: Node) {
-    // Only toggle if node has children
     if (node.children.length > 0) {
-      // Node is expanded if any of its children are in expandedPath
       const hasExpandedChildren = node.children.some((c) => expandedPath.has(c.id));
 
       if (hasExpandedChildren) {
-        // Collapse: remove all descendants from manuallyExpanded
         const newExpanded = new Set(manuallyExpanded);
         for (const child of node.children) {
           removeSubtree(child, newExpanded);
         }
         manuallyExpanded = newExpanded;
       } else {
-        // Expand: add the leftmost open leaf path
         const leaf = findLeftmostOpenLeaf(node);
         const targetId = leaf?.id ?? node.id;
         manuallyExpanded = new Set([...manuallyExpanded, targetId]);
@@ -79,7 +104,7 @@
     selectNode(node);
   }
 
-  // Helper to remove a node and all descendants from a set
+  /** Recursively removes a node and all its descendants from a set. */
   function removeSubtree(node: Node, set: Set<string>) {
     set.delete(node.id);
     for (const child of node.children) {
@@ -87,7 +112,7 @@
     }
   }
 
-  // Create attachment function for D3 tree rendering
+  /** Creates D3 tree renderer attachment for the SVG element. */
   function createTreeAttachment(
     treeData: Node,
     expanded: Set<string>,
@@ -106,7 +131,11 @@
     };
   }
 
-  // Auto-scroll to selected node when selection changes
+  /**
+   * Auto-scrolls to the selected node when selection changes.
+   *
+   * Triggers: `selection.nodeId` change
+   */
   $effect(() => {
     const _ = selection.nodeId;
     setTimeout(() => {
@@ -119,6 +148,44 @@
   });
 </script>
 
+<!--
+@component
+Interactive D3-powered tree visualization for navigating node ancestry.
+
+## Reactive Data Flow
+
+```
+Props: tree, activeNodeId
+         │
+         ▼
+┌─────────────────────┐
+│  $state            │
+│  manuallyExpanded   │◄──── handleNodeClick (toggle)
+└─────────────────────┘
+         │
+         ▼
+┌─────────────────────┐     ┌─────────────────────┐
+│  $derived           │     │  $derived           │
+│  defaultPath        │────►│  expandedPath       │──► D3 renderer (visibility)
+│  (focus node path)  │     │  (all visible)      │
+└─────────────────────┘     └─────────────────────┘
+         │                           │
+         ▼                           ▼
+┌─────────────────────┐     ┌─────────────────────┐
+│  $derived           │     │  $effect            │
+│  highlightedPath    │──► D3 renderer (styling) │  auto-scroll on select
+│  (selected ancestry)│     └─────────────────────┘
+└─────────────────────┘
+
+$effect (tree.id change) ──► resets manuallyExpanded + selection
+```
+
+## Usage
+```svelte
+<AncestryTreeView {tree} />
+<AncestryTreeView {tree} activeNodeId="node-123" />
+```
+-->
 <div class="ancestry-tree-view" bind:this={containerEl}>
   <svg
     class="tree-svg"
