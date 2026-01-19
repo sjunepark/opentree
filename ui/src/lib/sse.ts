@@ -3,7 +3,15 @@ import { connection } from './stores.svelte';
 type ChangeHandler = (event: ChangeEvent) => void;
 
 interface ChangeEvent {
-  type: 'tree_changed' | 'run_state_changed' | 'iteration_added' | 'stream_updated' | 'config_changed' | 'assumptions_changed' | 'questions_changed';
+  type:
+    | 'tree_changed'
+    | 'run_state_changed'
+    | 'iteration_added'
+    | 'iteration_completed'
+    | 'stream_updated'
+    | 'config_changed'
+    | 'assumptions_changed'
+    | 'questions_changed';
   run_id?: string;
   iter?: number;
 }

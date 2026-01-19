@@ -6,7 +6,7 @@ use std::time::Duration;
 use axum::extract::State;
 use axum::response::sse::{Event, Sse};
 use futures::stream::Stream;
-use notify::{Event as NotifyEvent, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
+use notify::{Event as NotifyEvent, EventKind, PollWatcher, RecursiveMode, Watcher};
 use serde::Serialize;
 use tokio::sync::broadcast;
 use tokio::sync::mpsc;
@@ -39,6 +39,11 @@ impl From<&ChangeEvent> for SsePayload {
             },
             ChangeEvent::IterationAdded { run_id, iter } => SsePayload {
                 event_type: "iteration_added".to_string(),
+                run_id: Some(run_id.clone()),
+                iter: Some(*iter),
+            },
+            ChangeEvent::IterationCompleted { run_id, iter } => SsePayload {
+                event_type: "iteration_completed".to_string(),
                 run_id: Some(run_id.clone()),
                 iter: Some(*iter),
             },
@@ -114,10 +119,10 @@ async fn run_file_watcher(state: AppState) -> anyhow::Result<()> {
     let (tx, mut rx) = mpsc::channel::<NotifyEvent>(100);
 
     let tx_clone = tx.clone();
-    let mut watcher = RecommendedWatcher::new(
+    let mut watcher = PollWatcher::new(
         move |res: Result<NotifyEvent, notify::Error>| {
             if let Ok(event) = res {
-                let _ = tx_clone.blocking_send(event);
+                let _ = tx_clone.try_send(event);
             }
         },
         notify::Config::default().with_poll_interval(Duration::from_millis(100)),
@@ -139,29 +144,23 @@ async fn run_file_watcher(state: AppState) -> anyhow::Result<()> {
     // Track known iterations to detect new ones
     let mut known_iterations = collect_known_iterations(&iter_dir);
 
-    // Debounce and process events
-    let mut debounce_timer: Option<tokio::time::Instant> = None;
+    // Process in batches at a fixed interval to avoid starving updates while a file
+    // (e.g. stream.jsonl) is being written continuously.
     let mut pending_events: Vec<NotifyEvent> = Vec::new();
-    let debounce_duration = Duration::from_millis(100);
+    let mut flush_tick = tokio::time::interval(Duration::from_millis(100));
+    flush_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
     loop {
         tokio::select! {
             Some(event) = rx.recv() => {
                 pending_events.push(event);
-                debounce_timer = Some(tokio::time::Instant::now());
             }
-            _ = async {
-                if let Some(timer) = debounce_timer {
-                    tokio::time::sleep_until(timer + debounce_duration).await;
-                } else {
-                    std::future::pending::<()>().await;
+            _ = flush_tick.tick() => {
+                if pending_events.is_empty() {
+                    continue;
                 }
-            } => {
-                if !pending_events.is_empty() {
-                    process_events(&state, &pending_events, &mut known_iterations);
-                    pending_events.clear();
-                }
-                debounce_timer = None;
+                process_events(&state, &pending_events, &mut known_iterations);
+                pending_events.clear();
             }
         }
     }
@@ -178,6 +177,8 @@ fn process_events(
     let mut assumptions_changed = false;
     let mut questions_changed = false;
     let mut new_iterations: Vec<(String, u32)> = Vec::new();
+    let mut iteration_completions: std::collections::HashSet<(String, u32)> =
+        std::collections::HashSet::new();
     let mut stream_updates: std::collections::HashSet<(String, u32)> =
         std::collections::HashSet::new();
 
@@ -206,18 +207,24 @@ fn process_events(
             } else if path == &questions_path {
                 questions_changed = true;
             } else if path.starts_with(&iter_dir) {
-                // Check if this is a stream.jsonl update
-                if path.file_name().and_then(|n| n.to_str()) == Some("stream.jsonl") {
-                    if let Some((run_id, iter)) = parse_iteration_path(&iter_dir, path) {
-                        stream_updates.insert((run_id, iter));
-                    }
+                let Some((run_id, iter)) = parse_iteration_path(&iter_dir, path) else {
+                    continue;
+                };
+                let key = (run_id, iter);
+
+                if !known_iterations.contains(&key) {
+                    known_iterations.insert(key.clone());
+                    new_iterations.push(key.clone());
                 }
-                // Check if this is a new iteration directory
-                else if let Some((run_id, iter)) = parse_iteration_path(&iter_dir, path)
-                    && !known_iterations.contains(&(run_id.clone(), iter))
-                {
-                    known_iterations.insert((run_id.clone(), iter));
-                    new_iterations.push((run_id, iter));
+
+                match path.file_name().and_then(|n| n.to_str()) {
+                    Some("stream.jsonl") => {
+                        stream_updates.insert(key);
+                    }
+                    Some("meta.json") => {
+                        iteration_completions.insert(key);
+                    }
+                    _ => {}
                 }
             }
         }
@@ -244,13 +251,27 @@ fn process_events(
         debug!("broadcasting questions change");
         let _ = state.event_tx.send(ChangeEvent::QuestionsChanged);
     }
+
+    new_iterations.sort();
     for (run_id, iter) in new_iterations {
         debug!(run_id = %run_id, iter = iter, "broadcasting new iteration");
         let _ = state
             .event_tx
             .send(ChangeEvent::IterationAdded { run_id, iter });
     }
-    for (run_id, iter) in stream_updates {
+
+    let mut completions: Vec<(String, u32)> = iteration_completions.into_iter().collect();
+    completions.sort();
+    for (run_id, iter) in completions {
+        debug!(run_id = %run_id, iter = iter, "broadcasting iteration completed");
+        let _ = state
+            .event_tx
+            .send(ChangeEvent::IterationCompleted { run_id, iter });
+    }
+
+    let mut updates: Vec<(String, u32)> = stream_updates.into_iter().collect();
+    updates.sort();
+    for (run_id, iter) in updates {
         debug!(run_id = %run_id, iter = iter, "broadcasting stream update");
         let _ = state
             .event_tx
@@ -307,4 +328,77 @@ fn parse_iteration_path(
     let iter = iter_str.parse::<u32>().ok()?;
 
     Some((run_id, iter))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn modify_event(path: std::path::PathBuf) -> NotifyEvent {
+        NotifyEvent {
+            kind: EventKind::Modify(notify::event::ModifyKind::Any),
+            paths: vec![path],
+            attrs: Default::default(),
+        }
+    }
+
+    #[test]
+    fn stream_update_emits_iteration_added_and_stream_updated() {
+        let project_dir = std::env::temp_dir()
+            .join("runner-ui-tests")
+            .join(format!("pid-{}", std::process::id()));
+        let state = AppState::new(project_dir);
+        let mut rx = state.event_tx.subscribe();
+        let mut known = std::collections::HashSet::new();
+
+        let path = state
+            .iterations_dir()
+            .join("run-x")
+            .join("1")
+            .join("stream.jsonl");
+
+        process_events(&state, &[modify_event(path)], &mut known);
+
+        let mut events = Vec::new();
+        while let Ok(ev) = rx.try_recv() {
+            events.push(ev);
+        }
+
+        assert_eq!(events.len(), 2);
+        assert!(
+            matches!(&events[0], ChangeEvent::IterationAdded { run_id, iter } if run_id == "run-x" && *iter == 1)
+        );
+        assert!(
+            matches!(&events[1], ChangeEvent::StreamUpdated { run_id, iter } if run_id == "run-x" && *iter == 1)
+        );
+    }
+
+    #[test]
+    fn meta_json_emits_iteration_completed() {
+        let project_dir = std::env::temp_dir()
+            .join("runner-ui-tests")
+            .join(format!("pid-{}", std::process::id()));
+        let state = AppState::new(project_dir);
+        let mut rx = state.event_tx.subscribe();
+        let mut known = std::collections::HashSet::new();
+        known.insert(("run-y".to_string(), 2));
+
+        let path = state
+            .iterations_dir()
+            .join("run-y")
+            .join("2")
+            .join("meta.json");
+
+        process_events(&state, &[modify_event(path)], &mut known);
+
+        let mut events = Vec::new();
+        while let Ok(ev) = rx.try_recv() {
+            events.push(ev);
+        }
+
+        assert_eq!(events.len(), 1);
+        assert!(
+            matches!(&events[0], ChangeEvent::IterationCompleted { run_id, iter } if run_id == "run-y" && *iter == 2)
+        );
+    }
 }

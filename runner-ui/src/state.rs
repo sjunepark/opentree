@@ -14,6 +14,10 @@ pub enum ChangeEvent {
         run_id: String,
         iter: u32,
     },
+    IterationCompleted {
+        run_id: String,
+        iter: u32,
+    },
     /// JSONL stream file updated (new events written).
     StreamUpdated {
         run_id: String,
