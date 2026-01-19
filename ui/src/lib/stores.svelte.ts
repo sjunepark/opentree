@@ -60,6 +60,56 @@ export const rightPanel = $state({
   activeTab: 'details' as 'details' | 'config' | 'docs',
 });
 
+function latestIterationForNode(
+  nodeId: string,
+  preferredRunId: string | null
+): { runId: string; iter: number } | null {
+  let bestRunId: string | null = null;
+  let bestIter = -1;
+
+  for (const entry of iterations.entries) {
+    if (entry.node_id !== nodeId) continue;
+    if (preferredRunId && entry.run_id !== preferredRunId) continue;
+
+    if (
+      bestRunId === null ||
+      entry.run_id > bestRunId ||
+      (entry.run_id === bestRunId && entry.iter > bestIter)
+    ) {
+      bestRunId = entry.run_id;
+      bestIter = entry.iter;
+    }
+  }
+
+  if (bestRunId === null) return null;
+  return { runId: bestRunId, iter: bestIter };
+}
+
+function latestIterationOverall(): { runId: string; iter: number } | null {
+  const runId = data.runState?.run_id ?? null;
+  const nextIter = data.runState?.next_iter ?? 0;
+  if (runId && nextIter > 0) {
+    return { runId, iter: nextIter - 1 };
+  }
+
+  if (iterations.entries.length === 0) return null;
+
+  let bestRunId = iterations.entries[0].run_id;
+  let bestIter = iterations.entries[0].iter;
+
+  for (const entry of iterations.entries.slice(1)) {
+    if (
+      entry.run_id > bestRunId ||
+      (entry.run_id === bestRunId && entry.iter > bestIter)
+    ) {
+      bestRunId = entry.run_id;
+      bestIter = entry.iter;
+    }
+  }
+
+  return { runId: bestRunId, iter: bestIter };
+}
+
 // Helper to create iteration key
 export function makeIterKey(runId: string, iter: number): string {
   return `${runId}/${iter}`;
@@ -80,6 +130,20 @@ export function selectNode(node: Node | null): void {
   selection.nodeId = node?.id ?? null;
   selection.node = node;
   selection.iterKey = null;
+
+  // When not actively streaming a live iteration, show logs for the last iteration
+  // that worked on the selected node (or fall back to the most recent iteration).
+  if (!node) return;
+  if (timer.startTime !== null) return;
+
+  const preferredRunId = data.runState?.run_id ?? null;
+  const latestForNode =
+    latestIterationForNode(node.id, preferredRunId) ?? latestIterationForNode(node.id, null);
+  const latest = latestForNode ?? latestIterationOverall();
+  if (!latest) return;
+
+  if (stream.activeRunId === latest.runId && stream.activeIter === latest.iter) return;
+  resetStream(latest.runId, latest.iter);
 }
 
 // Select an iteration

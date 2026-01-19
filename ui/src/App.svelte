@@ -29,6 +29,8 @@
   } from './lib/api';
   import { connect, disconnect, subscribe } from './lib/sse';
 
+  let streamLoadSeq = 0;
+
   // Load initial data
   async function loadData() {
     connection.loading = true;
@@ -203,6 +205,30 @@
   onDestroy(() => {
     disconnect();
     if (unsubscribe) unsubscribe();
+  });
+
+  // Load stream.jsonl once whenever the active stream iteration changes.
+  // (ContextPanel only loads stream when an iteration is selected; this keeps logs working
+  // even when the user is looking at node details.)
+  $effect(() => {
+    const runId = stream.activeRunId;
+    const iter = stream.activeIter;
+    if (!runId || iter === null) return;
+
+    const loadSeq = (streamLoadSeq += 1);
+
+    fetchStream(runId, iter)
+      .then((events) => {
+        if (loadSeq !== streamLoadSeq) return;
+        if (stream.activeRunId !== runId || stream.activeIter !== iter) return;
+        // If something already appended events (e.g. via SSE updates), don't clobber.
+        if (stream.offset !== 0) return;
+        stream.events = events;
+        stream.offset = events.length;
+      })
+      .catch(() => {
+        // Stream may not exist yet; keep empty.
+      });
   });
 </script>
 
