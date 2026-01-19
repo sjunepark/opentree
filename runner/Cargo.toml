@@ -1,6 +1,3 @@
-[workspace]
-members = [".", "prompt_lab"]
-
 [package]
 name = "runner"
 version = "0.1.0"

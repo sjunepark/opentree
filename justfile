@@ -117,6 +117,22 @@ ui-mount PROJECT:
   echo "Open http://localhost:5173"
   cd ui && bun run dev
 
+# Prompt Lab commands
+lab-list AGENT="tree_agent":
+  cargo run -p prompt_lab -- list {{AGENT}}
+
+lab-run AGENT="tree_agent" *FLAGS:
+  RUST_LOG=prompt_lab=info cargo run -p prompt_lab -- run {{AGENT}} {{FLAGS}}
+
+lab-dashboard:
+  cd runner/prompt_lab/dashboard && bun run dev
+
+lab-build:
+  cd runner/prompt_lab/dashboard && bun run build
+
+lab-install:
+  cd runner/prompt_lab/dashboard && bun install
+
 # Run eval with UI monitoring (runs eval, backend, and frontend together)
 # Usage: just eval-with-ui calculator-go
 #        just eval-with-ui calculator-go --continue
