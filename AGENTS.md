@@ -24,6 +24,7 @@
 - Prefer using `cargo` cli, rather than directly editing `Cargo.toml`.
 - Use Rust LSP (rust-analyzer) when text search is insufficient: tracing trait implementations, finding all usages before refactoring, resolving generic type bounds, or navigating cross-crate definitions. Prefer `Grep`/`Glob` for simple pattern matching.
 - In Rust, treat comments as first-class documentation: write them well and keep them current. Skip trivial docs (e.g., things inferable from names or signatures).
+- Avoid macros when possible; prefer functions, generics, or traits. When a macro seems warranted, discuss with the user first—macros obscure control flow and complicate debugging.
 
 ## Logging
 
