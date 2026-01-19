@@ -7,6 +7,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::tree::NodeNext;
+
 /// Agent-declared status for the selected node.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -16,15 +18,7 @@ pub enum AgentStatus {
     Decomposed,
 }
 
-/// Tree-agent decision for the selected node.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum TreeDecisionKind {
-    Execute,
-    Decompose,
-}
-
-/// Minimal child specification produced by the tree agent.
+/// Minimal child specification produced by the decomposer agent.
 ///
 /// The runner fills in mechanical fields deterministically:
 /// - `id`, `order`, `passes`, `attempts`, `max_attempts`, `children`
@@ -34,14 +28,13 @@ pub struct TreeChildSpec {
     pub goal: String,
     #[serde(default)]
     pub acceptance: Vec<String>,
+    pub next: NodeNext,
 }
 
-/// Structured output produced by the tree agent.
+/// Structured output produced by the decomposer agent.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TreeDecision {
-    pub decision: TreeDecisionKind,
+pub struct DecompositionOutput {
     pub summary: String,
-    #[serde(default)]
     pub children: Vec<TreeChildSpec>,
 }
 

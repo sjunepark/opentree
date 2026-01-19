@@ -1,73 +1,54 @@
-# Proposal: Agent Abstraction for Runner
+# Refactoring Proposal: Node `next` Routing + Decomposer
 
 ## Problem
 
-The runner currently has two agents (tree agent, executor agent) with more planned (reviewer, error handler). Agent logic is implicit in `step.rs` — prompts, schemas, timeouts, and orchestration are interleaved.
+The current `TreeAgent` both decides **whether** to decompose and **how** to decompose in the same response.
+That makes routing implicit and ties selection policy to prompt heuristics instead of explicit tree state.
 
-Pain points:
+## Goal
 
-1. **Testing** — Testing individual agent behavior requires verbose setup; no `agent.run()` API
-2. **Scalability** — Adding agents means growing `step.rs` with more inline logic
-3. **No clear contract** — Agent responsibilities are implicit in code flow
+Move routing into the task tree and keep the runner deterministic:
 
-## Proposed Solution
+- Add `next` to each node (`execute` | `decompose`)
+- Runner **trusts `node.next`** to choose the agent (no decider)
+- Decomposer outputs children *and* the `next` value for each child
+- Executor remains unchanged
 
-Create explicit agent structs that encapsulate:
+## Scope
 
-- **Input**: Prompt inputs, context
-- **Config**: Timeout, schema, prompt builder
-- **Output**: Typed, schema-validated result
-- **Side effects**: Whether the agent may modify files
+### In Scope
 
-Each agent becomes a first-class object with a `run()` method.
+- Add `next` to the task-tree schema and `Node`
+- Replace `TreeAgent` with `DecomposerAgent`
+- Route `runner step` by `node.next`
+- Update schemas/prompts/tests/docs accordingly
 
-## Requirements
+### Out of Scope
 
-1. Agents own their configuration (timeout, schema)
-2. Agents have independent timeout budgets
-3. Agents can be chained (output of one feeds into another)
-4. Testing: `agent.run(input)` should work in isolation
-5. Executor trait remains the underlying execution mechanism
+- Guard system
+- External APIs or CLI interface changes
+- Parallel traversal or selection logic changes
 
-## Agents to Support
+## Constraints
 
-| Agent | Side Effects | Output |
-|-------|--------------|--------|
-| Tree Agent | None | `TreeDecision` |
-| Executor Agent | Yes | `AgentOutput` |
-| (Future) Reviewer | None | Review result |
-| (Future) Error Handler | TBD | Recovery action |
+- Deterministic execution must be preserved
+- Existing tests updated to reflect new routing
+- Node ID allocation scheme unchanged
+- Step artifacts remain inspectable
 
-## Non-Goals
+## Affected Areas
 
-- No trait required unless polymorphism is needed
-- No changes to the `Executor` trait itself
-- No changes to schemas or prompt templates (just how they're organized)
+- `runner/src/tree.rs` → `Node` gains `next`
+- `schemas/task_tree/v1.schema.json` → add `next`
+- `runner/src/agents/decomposer.rs` → new decomposer wrapper
+- `runner/src/step.rs` → route by `node.next`
+- Prompt templates + schemas for decomposer output
+- Prompt Lab (inputs, schemas, UI types)
 
-## Success Criteria
+## Acceptance Criteria
 
-- [ ] `TreeAgent::run()` and `ExecutorAgent::run()` exist with clean APIs
-- [ ] `step.rs` orchestrates agents without building prompts/schemas inline
-- [ ] Individual agent tests don't require full `run_step` setup
-- [ ] Adding a new agent type doesn't require modifying `step.rs` core logic
-
-## Plan
-
-- [x] Decide module layout (`runner/src/agents/`, filenames, public API)
-- [x] Define per-agent contract: inputs, config (timeout/schema), output type, side effects flag
-- [x] Extract `TreeAgent` (no side effects): prompt build + schema write + `execute_and_load_json`
-- [x] Extract `ExecutorAgent` (side effects): prompt build + schema write + `execute_and_load`
-- [x] Refactor `runner/src/step.rs` to: build shared inputs once, call agents, keep state/guard policy unchanged
-- [x] Add unit tests for each agent `run()` (fake executor, fixed outputs, budget/timeouts exercised)
-- [x] Add/adjust integration tests to ensure step orchestration unchanged but `step.rs` slimmer (existing harness coverage; no edits needed)
-- [x] Update docs (`docs/project/`) to describe agent module boundaries and testing approach
-- [x] Run `just ci`
-
-### Unresolved Questions
-
-1. Where should agents live? (`runner/src/agents/` module?)
-   1. Make your best decision
-2. Should prompt builders move into agent modules or stay in `io/prompt.rs`?
-   1. Make your best decision for clean design and architecture
-3. How to handle iteration directory paths — passed in or agent-managed?
-   1. Make your best decision for clean design and architecture
+- [ ] `node.next` exists on all nodes and is schema-validated
+- [ ] Runner chooses decomposer/executor solely via `node.next`
+- [ ] Decomposer outputs child specs with `next`
+- [ ] Decomposer invariant violations hard-fail the step
+- [ ] Tests and docs reflect updated flow

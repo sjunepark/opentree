@@ -9,5 +9,5 @@
 #[path = "investigation/codex.rs"]
 mod codex;
 
-#[path = "investigation/tree_agent.rs"]
-mod tree_agent;
+#[path = "investigation/decomposer.rs"]
+mod decomposer;

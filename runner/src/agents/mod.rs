@@ -5,8 +5,8 @@ use std::path::Path;
 
 use anyhow::{Context, Result};
 
+pub mod decomposer;
 pub mod executor;
-pub mod tree;
 
 pub(crate) fn write_output_schema(path: &Path, contents: &str) -> Result<()> {
     if let Some(parent) = path.parent() {

@@ -44,7 +44,7 @@ test-ui-browser:
 # LLM/Codex:
 # Usage: just investigate-llm [filter]
 #   just investigate-llm             - run all (ignored) LLM tests
-#   just investigate-llm tree_agent  - run only tree-agent tests
+#   just investigate-llm decomposer  - run only decomposer tests
 #   just investigate-llm codex       - run only codex CLI tests
 #
 # DB:
@@ -118,10 +118,10 @@ ui-mount PROJECT:
   cd ui && bun run dev
 
 # Prompt Lab commands
-lab-list AGENT="tree_agent":
+lab-list AGENT="decomposer":
   cargo run -p prompt_lab -- list {{AGENT}}
 
-lab-run AGENT="tree_agent" *FLAGS:
+lab-run AGENT="decomposer" *FLAGS:
   RUST_LOG=prompt_lab=info cargo run -p prompt_lab -- run {{AGENT}} {{FLAGS}}
 
 lab-dashboard:

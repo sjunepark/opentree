@@ -14,7 +14,7 @@ run_step()
 ├── load_tree()           ← schema + invariants
 │   ├── validate_schema()
 │   └── validate_invariants()
-├── execute_and_load_json() ← tree agent runs
+├── execute_and_load_json() ← decomposer runs
 ├── execute_and_load()      ← executor agent runs (execute only)
 ├── load_tree()           ← schema + invariants (on modified tree)
 ├── validate_child_additions_restricted() ← restrict where new children may appear
@@ -36,7 +36,7 @@ Uses `jsonschema` crate to validate tree JSON against JSON Schema Draft 2020-12.
 
 | Constraint | Description |
 |------------|-------------|
-| Required fields | `id`, `order`, `title`, `goal`, `acceptance`, `passes`, `attempts`, `max_attempts`, `children` |
+| Required fields | `id`, `order`, `title`, `goal`, `acceptance`, `next`, `passes`, `attempts`, `max_attempts`, `children` |
 | Type correctness | Strings, booleans, integers, arrays as specified |
 | Numeric bounds | `max_attempts >= 0`, `attempts >= 0` |
 | No extra properties | `additionalProperties: false` |

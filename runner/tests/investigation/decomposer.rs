@@ -1,8 +1,8 @@
-//! Investigation tests for `TreeAgent` behavior when backed by a real LLM via Codex CLI.
+//! Investigation tests for `DecomposerAgent` behavior when backed by a real LLM via Codex CLI.
 //!
 //! These tests validate the *intended* heuristic behavior:
 //! - Complicated goals should be decomposed into child specs.
-//! - Simple goals should be executed directly.
+//! - Simple goals should yield executable children.
 //!
 //! They are ignored by default because they require:
 //! - Codex CLI installed and configured with API credentials
@@ -12,23 +12,22 @@
 //! Run with:
 //!
 //! ```bash
-//! cargo test -p runner --test investigation_llm tree_agent_ -- --ignored
+//! cargo test -p runner --test investigation_llm decomposer_ -- --ignored
 //! # or
-//! just investigate-llm tree_agent_
+//! just investigate-llm decomposer_
 //!
 //! # With logging (use --nocapture to see output for passing tests):
-//! TEST_LOG=1 cargo test -p runner --test investigation_llm tree_agent_ -- --ignored --nocapture
-//! TEST_LOG=1 RUST_LOG=debug just investigate-llm tree_agent_
+//! TEST_LOG=1 cargo test -p runner --test investigation_llm decomposer_ -- --ignored --nocapture
+//! TEST_LOG=1 RUST_LOG=debug just investigate-llm decomposer_
 //! ```
 
 use std::sync::Once;
 use std::time::{Duration, Instant};
 
-use runner::agents::tree::TreeAgent;
-use runner::core::types::TreeDecisionKind;
+use runner::agents::decomposer::DecomposerAgent;
 use runner::io::executor::CodexExecutor;
 use runner::io::prompt::PromptInputs;
-use runner::tree::Node;
+use runner::tree::{Node, NodeNext};
 use tempfile::tempdir;
 use tracing::{debug, info};
 
@@ -70,6 +69,7 @@ fn prompt_inputs_for(title: &str, goal: &str, acceptance: &[&str]) -> PromptInpu
             title: title.to_string(),
             goal: goal.to_string(),
             acceptance: acceptance.iter().map(|s| s.to_string()).collect(),
+            next: NodeNext::Decompose,
             passes: false,
             attempts: 0,
             max_attempts: 3,
@@ -86,9 +86,9 @@ fn prompt_inputs_for(title: &str, goal: &str, acceptance: &[&str]) -> PromptInpu
 
 #[test]
 #[ignore]
-fn tree_agent_decomposes_complicated_goal() {
+fn decomposer_suggests_children_for_complex_goal() {
     init_test_logging();
-    info!("starting: tree_agent_decomposes_complicated_goal");
+    info!("starting: decomposer_suggests_children_for_complex_goal");
 
     let tmp = tempdir().expect("create tempdir");
     let root = tmp.path();
@@ -97,7 +97,7 @@ fn tree_agent_decomposes_complicated_goal() {
     let state_dir = root.join(".runner/state");
     let iter_dir = root.join(".runner/iterations/run-test/1");
 
-    let agent = TreeAgent::new(&state_dir, PROMPT_BUDGET_BYTES, OUTPUT_LIMIT_BYTES);
+    let agent = DecomposerAgent::new(&state_dir, PROMPT_BUDGET_BYTES, OUTPUT_LIMIT_BYTES);
     let executor = CodexExecutor;
 
     let inputs = prompt_inputs_for(
@@ -116,10 +116,10 @@ fn tree_agent_decomposes_complicated_goal() {
         title = %inputs.selected_node.title,
         goal = %inputs.selected_node.goal,
         acceptance = ?inputs.selected_node.acceptance,
-        "running tree agent"
+        "running decomposer"
     );
 
-    let decision = agent
+    let output = agent
         .run(
             &executor,
             root,
@@ -127,30 +127,22 @@ fn tree_agent_decomposes_complicated_goal() {
             &inputs,
             Instant::now() + CODEX_TIMEOUT,
         )
-        .expect("tree agent run");
+        .expect("decomposer run");
 
-    info!(
-        decision = ?decision.decision,
-        children = decision.children.len(),
-        "tree agent returned"
-    );
-    debug!(summary = %decision.summary, "decision summary");
+    info!(children = output.children.len(), "decomposer returned");
+    debug!(summary = %output.summary, "decomposition summary");
 
-    assert_eq!(
-        decision.decision,
-        TreeDecisionKind::Decompose,
-        "tree agent returned: {decision:?}"
-    );
     assert!(
-        !decision.children.is_empty(),
-        "expected 1+ child specs for decision=decompose"
+        !output.children.is_empty(),
+        "expected 1+ child specs for decomposition"
     );
 
-    for (i, child) in decision.children.iter().enumerate() {
+    for (i, child) in output.children.iter().enumerate() {
         debug!(
             index = i,
             title = %child.title,
             goal = %child.goal,
+            next = %child.next.as_str(),
             acceptance = ?child.acceptance,
             "child spec"
         );
@@ -164,14 +156,14 @@ fn tree_agent_decomposes_complicated_goal() {
         );
     }
 
-    info!("passed: tree_agent_decomposes_complicated_goal");
+    info!("passed: decomposer_suggests_children_for_complex_goal");
 }
 
 #[test]
 #[ignore]
-fn tree_agent_executes_simple_goal() {
+fn decomposer_targets_execute_for_simple_goal() {
     init_test_logging();
-    info!("starting: tree_agent_executes_simple_goal");
+    info!("starting: decomposer_targets_execute_for_simple_goal");
 
     let tmp = tempdir().expect("create tempdir");
     let root = tmp.path();
@@ -180,7 +172,7 @@ fn tree_agent_executes_simple_goal() {
     let state_dir = root.join(".runner/state");
     let iter_dir = root.join(".runner/iterations/run-test/1");
 
-    let agent = TreeAgent::new(&state_dir, PROMPT_BUDGET_BYTES, OUTPUT_LIMIT_BYTES);
+    let agent = DecomposerAgent::new(&state_dir, PROMPT_BUDGET_BYTES, OUTPUT_LIMIT_BYTES);
     let executor = CodexExecutor;
 
     let inputs = prompt_inputs_for(
@@ -192,10 +184,10 @@ fn tree_agent_executes_simple_goal() {
         title = %inputs.selected_node.title,
         goal = %inputs.selected_node.goal,
         acceptance = ?inputs.selected_node.acceptance,
-        "running tree agent"
+        "running decomposer"
     );
 
-    let decision = agent
+    let output = agent
         .run(
             &executor,
             root,
@@ -203,24 +195,24 @@ fn tree_agent_executes_simple_goal() {
             &inputs,
             Instant::now() + CODEX_TIMEOUT,
         )
-        .expect("tree agent run");
+        .expect("decomposer run");
 
-    info!(
-        decision = ?decision.decision,
-        children = decision.children.len(),
-        "tree agent returned"
-    );
-    debug!(summary = %decision.summary, "decision summary");
+    info!(children = output.children.len(), "decomposer returned");
+    debug!(summary = %output.summary, "decomposition summary");
 
-    assert_eq!(
-        decision.decision,
-        TreeDecisionKind::Execute,
-        "tree agent returned: {decision:?}"
-    );
     assert!(
-        decision.children.is_empty(),
-        "expected no child specs for decision=execute"
+        !output.children.is_empty(),
+        "expected at least one child even for simple goal"
     );
 
-    info!("passed: tree_agent_executes_simple_goal");
+    let all_execute = output
+        .children
+        .iter()
+        .all(|child| child.next == NodeNext::Execute);
+    assert!(
+        all_execute,
+        "expected all child specs to be executable for simple goal"
+    );
+
+    info!("passed: decomposer_targets_execute_for_simple_goal");
 }

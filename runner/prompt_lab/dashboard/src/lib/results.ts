@@ -2,13 +2,13 @@
  * Types and utilities for loading prompt lab results.
  */
 
-export interface TreeDecision {
-	decision: 'execute' | 'decompose';
+export interface DecompositionOutput {
 	summary: string;
-	children?: Array<{
+	children: Array<{
 		title: string;
 		goal: string;
 		acceptance?: string[];
+		next: 'execute' | 'decompose';
 	}>;
 }
 
@@ -20,7 +20,7 @@ export interface CombinationResult {
 	expected_decision: string | null;
 	actual_decision: string | null;
 	matches_expected: boolean | null;
-	output: TreeDecision | null;
+	output: DecompositionOutput | null;
 	error: string | null;
 	duration_ms: number;
 	timestamp: string;

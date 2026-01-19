@@ -13,6 +13,7 @@
         "title",
         "goal",
         "acceptance",
+        "next",
         "passes",
         "attempts",
         "max_attempts",
@@ -37,6 +38,10 @@
           "items": {
             "type": "string"
           }
+        },
+        "next": {
+          "type": "string",
+          "enum": ["execute", "decompose"]
         },
         "passes": {
           "type": "boolean"

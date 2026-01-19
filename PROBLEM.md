@@ -1,69 +1,37 @@
 # Problem: Decomposition Prompting Gap
 
-## Status (2026-01-18)
+## Status (2026-01-19)
 
-This is addressed by introducing a dedicated **tree agent** that outputs structured
-decomposition decisions (`decision=execute|decompose` + optional child specs). The
-runner applies child nodes to `.runner/state/tree.json` deterministically, so
-decomposition no longer relies on the executor agent discovering/editing tree files.
+Resolved by introducing a dedicated **decomposer agent** and moving routing into the task tree via
+`node.next`. The decomposer outputs child specs (including each child’s `next`), and the runner
+writes them into `.runner/state/tree.json` deterministically.
 
 ## Summary
 
-Previously, when an agent declared `status: "decomposed"`, it was expected to add children to `tree.json`. The prompt did not tell the agent:
-
-1. Where `tree.json` is located (`.runner/state/tree.json`)
-2. The JSON schema to use
-3. How to structure child nodes
+Previously, decomposition relied on a combined decision+decompose agent and implicit routing. This
+blurred responsibilities and made it unclear where decomposition should happen or how children were
+defined.
 
 ## Current State
 
-**What the prompt says:**
+**What the runner does now:**
 
-```text
-Runner contract:
-- Do not modify passed nodes.
-- Do not set `passes=true` (runner-owned).
-- Only add children when declaring `decomposed`.
-- Output must be structured JSON with `status` and `summary`.
-```
+- Uses `node.next` to decide whether to run the decomposer or executor
+- Decomposer outputs child specs (`title`, `goal`, `acceptance`, `next`)
+- Runner applies child specs to the selected node and enforces invariants
 
-**What's missing:**
+**What the prompt says (decomposer):**
 
-- Path to tree file
-- Tree schema reference
-- Example of valid child node structure
-
-## Evidence
-
-In `runner/src/step.rs:204`:
-
-```rust
-let next_tree = load_tree(&schema_path, &tree_path)?;
-```
-
-The runner loads `tree.json` after agent execution, expecting the agent may have modified it. But the agent isn't told where or how.
+- Decompose the selected node into child specs
+- Provide `next` for each child (`execute` or `decompose`)
+- Do not edit repository files
 
 ## Impact
 
-Decomposition likely doesn't work reliably. The agent either:
-
-- Discovers the file path organically (fragile)
-- Ignores the instruction (decomposition broken)
-- Fails with invalid tree structure
-
-## Proposed Fix
-
-Add to prompt:
-
-1. Tree path: `.runner/state/tree.json`
-2. Schema path: `.runner/state/schema.json`
-3. Example child node structure
-4. Clear instruction: "When decomposing, read tree.json, add children to the selected node, write back"
+Decomposition no longer depends on the executor mutating `tree.json`. The runner owns all tree
+writes, and routing is explicit in the tree schema.
 
 ## Testing
 
-Create an eval case that:
-
-1. Gives a goal requiring decomposition
-2. Verifies `tree.json` has children after completion
-3. Validates children conform to schema
+- Decomposer outputs are schema-validated and must include `next`
+- Step tests ensure decomposition creates children and selection proceeds deterministically

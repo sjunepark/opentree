@@ -6,8 +6,8 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, anyhow};
 
+use crate::agents::decomposer::DecomposerAgent;
 use crate::agents::executor::ExecutorAgent;
-use crate::agents::tree::TreeAgent;
 use crate::core::budget::remaining_budget;
 use crate::core::child_additions::validate_child_additions_restricted;
 use crate::core::immutability::check_passed_node_immutability;
@@ -15,7 +15,7 @@ use crate::core::path::node_path;
 use crate::core::selector::{is_stuck, leftmost_open_leaf};
 use crate::core::state_update::apply_state_updates;
 use crate::core::status_validator::validate_status_invariants;
-use crate::core::types::{AgentOutput, AgentStatus, GuardOutcome, TreeChildSpec, TreeDecisionKind};
+use crate::core::types::{AgentOutput, AgentStatus, GuardOutcome, TreeChildSpec};
 use crate::io::config::load_config;
 use crate::io::context::{ContextPayload, write_context};
 use crate::io::executor::Executor;
@@ -26,7 +26,7 @@ use crate::io::iteration_log::{IterationMeta, IterationWriteRequest, write_itera
 use crate::io::prompt::PromptInputs;
 use crate::io::run_state::{RunState, load_run_state, write_run_state};
 use crate::io::tree_store::{load_tree, write_tree};
-use crate::tree::Node;
+use crate::tree::{Node, NodeNext};
 
 /// Configuration for a single step iteration.
 #[derive(Debug, Clone)]
@@ -173,7 +173,7 @@ pub fn run_step<E: Executor, G: GuardRunner>(
     let tree_summary = summarize_tree(&prev_tree, 200);
     let prompt_inputs =
         PromptInputs::from_root(root, selected_path, selected.to_owned(), tree_summary)?;
-    let tree_agent = TreeAgent::new(
+    let decomposer_agent = DecomposerAgent::new(
         &state_dir,
         config.prompt_budget_bytes,
         cfg.executor_output_limit_bytes,
@@ -196,24 +196,23 @@ pub fn run_step<E: Executor, G: GuardRunner>(
     let runner_error_log_path = iter_dir.join("runner_error.log");
 
     let attempt = (|| -> Result<(AgentOutput, GuardOutcome, Node, Option<String>)> {
-        // Phase 1: tree agent decides whether to decompose or execute.
-        let tree_decision = tree_agent.run(executor, root, &iter_dir, &prompt_inputs, deadline)?;
+        match selected.next {
+            NodeNext::Decompose => {
+                // Phase 1: decomposer agent expands the selected leaf into children.
+                let decomposition =
+                    decomposer_agent.run(executor, root, &iter_dir, &prompt_inputs, deadline)?;
 
-        match tree_decision.decision {
-            TreeDecisionKind::Decompose => {
-                if tree_decision.children.is_empty() {
-                    let msg =
-                        "tree agent returned decision=decompose but children is empty".to_string();
-                    let (output, tree_after) =
-                        apply_agent_retry(&prev_tree, &selected_id, msg.clone())?;
-                    write_tree(&tree_path, &tree_after)?;
-                    return Ok((output, GuardOutcome::Skipped, tree_after, Some(msg)));
+                if decomposition.children.is_empty() {
+                    return Err(anyhow!(
+                        "decomposer returned empty children list for '{}'",
+                        selected_id
+                    ));
                 }
 
                 let next_tree = decompose_tree(
                     &prev_tree,
                     &selected_id,
-                    &tree_decision.children,
+                    &decomposition.children,
                     cfg.max_attempts_default,
                 )?;
 
@@ -237,7 +236,7 @@ pub fn run_step<E: Executor, G: GuardRunner>(
 
                 let output = AgentOutput {
                     status: AgentStatus::Decomposed,
-                    summary: tree_decision.summary,
+                    summary: decomposition.summary,
                 };
                 let guard_outcome = GuardOutcome::Skipped;
 
@@ -254,14 +253,14 @@ pub fn run_step<E: Executor, G: GuardRunner>(
 
                 Ok((output, guard_outcome, updated_tree, None))
             }
-            TreeDecisionKind::Execute => {
+            NodeNext::Execute => {
                 // Phase 2: executor agent performs work for the selected node.
                 let output = executor_agent.run(
                     executor,
                     root,
                     &iter_dir,
                     &prompt_inputs,
-                    Some(tree_decision.summary.as_str()),
+                    None,
                     deadline,
                 )?;
 
@@ -587,6 +586,7 @@ fn decompose_tree(
             title: child.title.clone(),
             goal: child.goal.clone(),
             acceptance: child.acceptance.clone(),
+            next: child.next,
             passes: false,
             attempts: 0,
             max_attempts: max_attempts_default,
@@ -686,8 +686,13 @@ fn summarize_tree_inner(node: &Node, depth: usize, max_nodes: usize, lines: &mut
     }
     let indent = "  ".repeat(depth);
     lines.push(format!(
-        "{}- {} (passes={}, attempts={}/{})",
-        indent, node.id, node.passes, node.attempts, node.max_attempts
+        "{}- {} (next={}, passes={}, attempts={}/{})",
+        indent,
+        node.id,
+        node.next.as_str(),
+        node.passes,
+        node.attempts,
+        node.max_attempts
     ));
     for child in &node.children {
         summarize_tree_inner(child, depth + 1, max_nodes, lines);
@@ -697,13 +702,26 @@ fn summarize_tree_inner(node: &Node, depth: usize, max_nodes: usize, lines: &mut
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::types::{AgentOutput, TreeChildSpec, TreeDecision, TreeDecisionKind};
+    use crate::core::types::{AgentOutput, DecompositionOutput, TreeChildSpec};
     use crate::io::git::Git;
     use crate::io::guards::GuardRunner;
     use crate::test_support::{
         ScriptedExec, ScriptedExecutor, ScriptedGuard, ScriptedGuardRunner, ScriptedOutput,
         TestRepo, load_tree_fixture,
     };
+    use std::path::Path;
+
+    fn set_root_next(repo: &TestRepo, root: &Path, next: NodeNext) {
+        let mut tree = repo.read_tree().expect("read tree");
+        tree.next = next;
+        repo.write_tree(&tree).expect("write tree");
+        let git = Git::new(root);
+        git.add_all().expect("git add");
+        assert!(
+            git.commit_staged("chore: set root next")
+                .expect("git commit")
+        );
+    }
 
     /// Verifies a retry iteration updates run_state and writes iteration logs.
     ///
@@ -717,24 +735,15 @@ mod tests {
         let repo = TestRepo::new().expect("repo");
         let root = repo.root();
         repo.start_run().expect("start");
+        set_root_next(&repo, root, NodeNext::Execute);
 
-        let executor = ScriptedExecutor::new(vec![
-            ScriptedExec {
-                output: ScriptedOutput::TreeDecision(TreeDecision {
-                    decision: TreeDecisionKind::Execute,
-                    summary: "execute".to_string(),
-                    children: Vec::new(),
-                }),
-                tree_update: None,
-            },
-            ScriptedExec {
-                output: ScriptedOutput::AgentOutput(AgentOutput {
-                    status: AgentStatus::Retry,
-                    summary: "needs more".to_string(),
-                }),
-                tree_update: None,
-            },
-        ]);
+        let executor = ScriptedExecutor::new(vec![ScriptedExec {
+            output: ScriptedOutput::AgentOutput(AgentOutput {
+                status: AgentStatus::Retry,
+                summary: "needs more".to_string(),
+            }),
+            tree_update: None,
+        }]);
         let guard_runner = ScriptedGuardRunner::new(vec![ScriptedGuard {
             outcome: GuardOutcome::Pass,
             log: "guard output".to_string(),
@@ -775,24 +784,15 @@ mod tests {
         let repo = TestRepo::new().expect("repo");
         let root = repo.root();
         repo.start_run().expect("start");
+        set_root_next(&repo, root, NodeNext::Execute);
 
-        let executor = ScriptedExecutor::new(vec![
-            ScriptedExec {
-                output: ScriptedOutput::TreeDecision(TreeDecision {
-                    decision: TreeDecisionKind::Execute,
-                    summary: "execute".to_string(),
-                    children: Vec::new(),
-                }),
-                tree_update: None,
-            },
-            ScriptedExec {
-                output: ScriptedOutput::AgentOutput(AgentOutput {
-                    status: AgentStatus::Done,
-                    summary: "done".to_string(),
-                }),
-                tree_update: None,
-            },
-        ]);
+        let executor = ScriptedExecutor::new(vec![ScriptedExec {
+            output: ScriptedOutput::AgentOutput(AgentOutput {
+                status: AgentStatus::Done,
+                summary: "done".to_string(),
+            }),
+            tree_update: None,
+        }]);
         let guard_runner = ScriptedGuardRunner::new(vec![ScriptedGuard {
             outcome: GuardOutcome::Pass,
             log: "guard output".to_string(),
@@ -833,28 +833,13 @@ mod tests {
         let repo = TestRepo::new().expect("repo");
         let root = repo.root();
         repo.start_run().expect("start");
+        set_root_next(&repo, root, NodeNext::Execute);
 
         let executor = ScriptedExecutor::new(vec![
-            ScriptedExec {
-                output: ScriptedOutput::TreeDecision(TreeDecision {
-                    decision: TreeDecisionKind::Execute,
-                    summary: "execute".to_string(),
-                    children: Vec::new(),
-                }),
-                tree_update: None,
-            },
             ScriptedExec {
                 output: ScriptedOutput::AgentOutput(AgentOutput {
                     status: AgentStatus::Done,
                     summary: "done".to_string(),
-                }),
-                tree_update: None,
-            },
-            ScriptedExec {
-                output: ScriptedOutput::TreeDecision(TreeDecision {
-                    decision: TreeDecisionKind::Execute,
-                    summary: "execute".to_string(),
-                    children: Vec::new(),
                 }),
                 tree_update: None,
             },
@@ -900,28 +885,13 @@ mod tests {
         let repo = TestRepo::new().expect("repo");
         let root = repo.root();
         repo.start_run().expect("start");
+        set_root_next(&repo, root, NodeNext::Execute);
 
         let executor = ScriptedExecutor::new(vec![
-            ScriptedExec {
-                output: ScriptedOutput::TreeDecision(TreeDecision {
-                    decision: TreeDecisionKind::Execute,
-                    summary: "execute".to_string(),
-                    children: Vec::new(),
-                }),
-                tree_update: None,
-            },
             ScriptedExec {
                 output: ScriptedOutput::AgentOutput(AgentOutput {
                     status: AgentStatus::Done,
                     summary: "ignored".to_string(),
-                }),
-                tree_update: None,
-            },
-            ScriptedExec {
-                output: ScriptedOutput::TreeDecision(TreeDecision {
-                    decision: TreeDecisionKind::Execute,
-                    summary: "execute".to_string(),
-                    children: Vec::new(),
                 }),
                 tree_update: None,
             },
@@ -979,7 +949,7 @@ mod tests {
 
     /// Verifies decomposition adds children to the tree and skips guards.
     ///
-    /// Uses scripted executor returning Decomposed status with tree update. Asserts:
+    /// Uses scripted executor returning decomposition output. Asserts:
     /// - outcome.status is Decomposed
     /// - Tree has new children added
     /// - No guard.log (guards skipped for decomposition)
@@ -990,13 +960,13 @@ mod tests {
         repo.start_run().expect("start");
 
         let executor = ScriptedExecutor::new(vec![ScriptedExec {
-            output: ScriptedOutput::TreeDecision(TreeDecision {
-                decision: TreeDecisionKind::Decompose,
+            output: ScriptedOutput::DecompositionOutput(DecompositionOutput {
                 summary: "split".to_string(),
                 children: vec![TreeChildSpec {
                     title: "Child".to_string(),
                     goal: "Do child work".to_string(),
                     acceptance: Vec::new(),
+                    next: NodeNext::Execute,
                 }],
             }),
             tree_update: None,
@@ -1029,28 +999,13 @@ mod tests {
         let repo = TestRepo::new().expect("repo");
         let root = repo.root();
         let start = repo.start_run().expect("start");
+        set_root_next(&repo, root, NodeNext::Execute);
 
         let executor = ScriptedExecutor::new(vec![
-            ScriptedExec {
-                output: ScriptedOutput::TreeDecision(TreeDecision {
-                    decision: TreeDecisionKind::Execute,
-                    summary: "execute".to_string(),
-                    children: Vec::new(),
-                }),
-                tree_update: None,
-            },
             ScriptedExec {
                 output: ScriptedOutput::AgentOutput(AgentOutput {
                     status: AgentStatus::Retry,
                     summary: "needs more".to_string(),
-                }),
-                tree_update: None,
-            },
-            ScriptedExec {
-                output: ScriptedOutput::TreeDecision(TreeDecision {
-                    decision: TreeDecisionKind::Execute,
-                    summary: "execute".to_string(),
-                    children: Vec::new(),
                 }),
                 tree_update: None,
             },
@@ -1142,22 +1097,24 @@ mod tests {
         assert!(guard_runner.last_request().is_none());
     }
 
-    /// Verifies the runner retries when the tree agent requests decomposition with no children.
+    /// Verifies the runner errors when the decomposer returns no children.
     #[test]
-    fn step_retries_when_tree_agent_decomposes_without_children() {
+    fn step_errors_when_decomposer_returns_empty_children() {
         let repo = TestRepo::new().expect("repo");
         let root = repo.root();
         let start = repo.start_run().expect("start");
 
-        let fixture = load_tree_fixture("simple_tree").expect("fixture");
+        let mut fixture = load_tree_fixture("simple_tree").expect("fixture");
+        if let Some(child) = fixture.children.first_mut() {
+            child.next = NodeNext::Decompose;
+        }
         repo.write_tree(&fixture).expect("write tree");
         let git = Git::new(root);
         git.add_all().expect("git add");
         assert!(git.commit_staged("chore: fixture").expect("git commit"));
 
         let executor = ScriptedExecutor::new(vec![ScriptedExec {
-            output: ScriptedOutput::TreeDecision(TreeDecision {
-                decision: TreeDecisionKind::Decompose,
+            output: ScriptedOutput::DecompositionOutput(DecompositionOutput {
                 summary: "missing children".to_string(),
                 children: Vec::new(),
             }),
@@ -1165,9 +1122,12 @@ mod tests {
         }]);
         let guard_runner = ScriptedGuardRunner::new(Vec::new());
 
-        let outcome =
-            run_step(root, &executor, &guard_runner, &StepConfig::default()).expect("step");
-        assert_eq!(outcome.status, AgentStatus::Retry);
+        let err =
+            run_step(root, &executor, &guard_runner, &StepConfig::default()).expect_err("step");
+        assert!(
+            err.to_string()
+                .contains("decomposer returned empty children list")
+        );
 
         let iter_dir = root
             .join(".runner/iterations")
@@ -1175,7 +1135,7 @@ mod tests {
             .join("1");
         let runner_error =
             fs::read_to_string(iter_dir.join("runner_error.log")).expect("read runner_error.log");
-        assert!(runner_error.contains("decision=decompose"));
+        assert!(runner_error.contains("decomposer returned empty children list"));
 
         guard_runner.assert_drained().expect("guard drained");
         executor.assert_drained().expect("executor drained");
@@ -1199,23 +1159,13 @@ mod tests {
             passed_node.title = "mutated".to_string();
         }
 
-        let executor = ScriptedExecutor::new(vec![
-            ScriptedExec {
-                output: ScriptedOutput::TreeDecision(TreeDecision {
-                    decision: TreeDecisionKind::Execute,
-                    summary: "execute".to_string(),
-                    children: Vec::new(),
-                }),
-                tree_update: None,
-            },
-            ScriptedExec {
-                output: ScriptedOutput::AgentOutput(AgentOutput {
-                    status: AgentStatus::Retry,
-                    summary: "retry".to_string(),
-                }),
-                tree_update: Some(mutated),
-            },
-        ]);
+        let executor = ScriptedExecutor::new(vec![ScriptedExec {
+            output: ScriptedOutput::AgentOutput(AgentOutput {
+                status: AgentStatus::Retry,
+                summary: "retry".to_string(),
+            }),
+            tree_update: Some(mutated),
+        }]);
         let guard_runner = ScriptedGuardRunner::new(Vec::new());
 
         let outcome =

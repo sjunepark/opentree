@@ -9,6 +9,20 @@ When adding a decision, record a dated section with status, decision, rationale,
 
 ---
 
+## 2026-01-19 — Node `next` field + decomposer routing
+
+- Status: accepted
+- Decision:
+  - Add `next` to each node in the task tree (`execute` | `decompose`).
+  - Runner routes work based on `node.next` (no separate decider agent).
+  - Decomposer outputs children with their own `next` values.
+- Rationale: keeps routing deterministic and explicit in the tree, while allowing parents to decide whether children should execute directly or decompose further.
+- Consequences:
+  - Task-tree schema updated to include `next`.
+  - TreeAgent is replaced by DecomposerAgent.
+  - Supersedes “Implicit mode classification (no `mode` field)” (2026-01-16).
+- References: `VISION.md`, `ARCHITECTURE.md`
+
 ## 2026-01-16 — Non-negotiable invariants
 
 - Status: accepted

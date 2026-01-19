@@ -9,7 +9,8 @@
       "Users can log in via Google",
       "Roles enforced on all endpoints",
       "All auth events logged"
-    ]
+    ],
+    "next": "decompose"
   },
   "tree_summary": "root\n└── Implement Auth (selected)",
   "context_goal": "Build a secure authentication system for the application",

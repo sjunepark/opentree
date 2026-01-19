@@ -1,4 +1,4 @@
-//! Tree agent for decomposition decisions.
+//! Decomposer agent for producing child task specs.
 
 use std::path::{Path, PathBuf};
 use std::time::Instant;
@@ -6,33 +6,33 @@ use std::time::Instant;
 use anyhow::Result;
 
 use crate::core::budget::remaining_budget;
-use crate::core::types::TreeDecision;
+use crate::core::types::DecompositionOutput;
 use crate::io::executor::{ExecRequest, Executor, execute_and_load_json};
 use crate::io::prompt::{PromptBuilder, PromptInputs};
 
 use super::write_output_schema;
 
-const TREE_DECISION_SCHEMA: &str = include_str!("../../schemas/tree_decision.schema.json");
+const DECOMPOSER_OUTPUT_SCHEMA: &str = include_str!("../../schemas/decomposer_output.schema.json");
 
-/// Configuration for a tree-agent invocation.
+/// Configuration for a decomposer-agent invocation.
 #[derive(Debug, Clone)]
-pub struct TreeAgentConfig {
+pub struct DecomposerAgentConfig {
     pub prompt_budget_bytes: usize,
     pub output_limit_bytes: usize,
 }
 
-/// Tree agent wrapper that owns schema and prompt settings.
+/// Decomposer agent wrapper that owns schema and prompt settings.
 #[derive(Debug, Clone)]
-pub struct TreeAgent {
+pub struct DecomposerAgent {
     schema_path: PathBuf,
-    config: TreeAgentConfig,
+    config: DecomposerAgentConfig,
 }
 
-impl TreeAgent {
+impl DecomposerAgent {
     pub fn new(state_dir: &Path, prompt_budget_bytes: usize, output_limit_bytes: usize) -> Self {
         Self {
-            schema_path: state_dir.join("tree_decision.schema.json"),
-            config: TreeAgentConfig {
+            schema_path: state_dir.join("decomposer_output.schema.json"),
+            config: DecomposerAgentConfig {
                 prompt_budget_bytes,
                 output_limit_bytes,
             },
@@ -50,11 +50,11 @@ impl TreeAgent {
         iter_dir: &Path,
         inputs: &PromptInputs,
         deadline: Instant,
-    ) -> Result<TreeDecision> {
-        write_output_schema(&self.schema_path, TREE_DECISION_SCHEMA)?;
+    ) -> Result<DecompositionOutput> {
+        write_output_schema(&self.schema_path, DECOMPOSER_OUTPUT_SCHEMA)?;
 
         let prompt = PromptBuilder::new(self.config.prompt_budget_bytes)
-            .build_tree_agent(inputs)
+            .build_decomposer(inputs)
             .render();
 
         let request = ExecRequest {
@@ -75,7 +75,6 @@ impl TreeAgent {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::types::TreeDecisionKind;
     use crate::io::executor::ExecRequest;
     use crate::test_support::node;
     use std::cell::RefCell;
@@ -83,14 +82,14 @@ mod tests {
     use std::time::Duration;
 
     struct CapturingExecutor {
-        decision: TreeDecision,
+        output: DecompositionOutput,
         last_request: RefCell<Option<ExecRequest>>,
     }
 
     impl CapturingExecutor {
-        fn new(decision: TreeDecision) -> Self {
+        fn new(output: DecompositionOutput) -> Self {
             Self {
-                decision,
+                output,
                 last_request: RefCell::new(None),
             }
         }
@@ -102,7 +101,7 @@ mod tests {
             if let Some(parent) = request.output_path.parent() {
                 fs::create_dir_all(parent)?;
             }
-            let mut buf = serde_json::to_string_pretty(&self.decision)?;
+            let mut buf = serde_json::to_string_pretty(&self.output)?;
             buf.push('\n');
             fs::write(&request.output_path, buf)?;
             Ok(())
@@ -123,20 +122,24 @@ mod tests {
     }
 
     #[test]
-    fn tree_agent_runs_with_schema_and_prompt() {
+    fn decomposer_agent_runs_with_schema_and_prompt() {
         let temp = tempfile::tempdir().expect("tempdir");
         let state_dir = temp.path().join(".runner/state");
         let iter_dir = temp.path().join(".runner/iterations/run-1/1");
         fs::create_dir_all(&state_dir).expect("state dir");
         fs::create_dir_all(&iter_dir).expect("iter dir");
 
-        let decision = TreeDecision {
-            decision: TreeDecisionKind::Execute,
-            summary: "go".to_string(),
-            children: Vec::new(),
+        let output = DecompositionOutput {
+            summary: "split".to_string(),
+            children: vec![crate::core::types::TreeChildSpec {
+                title: "Child".to_string(),
+                goal: "Child goal".to_string(),
+                acceptance: Vec::new(),
+                next: crate::tree::NodeNext::Execute,
+            }],
         };
-        let executor = CapturingExecutor::new(decision.clone());
-        let agent = TreeAgent::new(&state_dir, 1024, 2048);
+        let executor = CapturingExecutor::new(output.clone());
+        let agent = DecomposerAgent::new(&state_dir, 1024, 2048);
 
         let got = agent
             .run(
@@ -148,10 +151,10 @@ mod tests {
             )
             .expect("run");
 
-        assert_eq!(got, decision);
+        assert_eq!(got, output);
         assert!(agent.schema_path.exists());
         let request = executor.last_request.borrow().clone().expect("request");
-        assert!(request.prompt.contains("Tree Agent Contract"));
+        assert!(request.prompt.contains("Decomposer Contract"));
         assert!(request.output_path.ends_with("planner_output.json"));
         assert!(!agent.allows_side_effects());
     }

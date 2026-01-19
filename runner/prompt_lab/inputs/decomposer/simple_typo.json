@@ -7,7 +7,8 @@
     "goal": "Fix the typo 'teh' -> 'the' in README.md line 42",
     "acceptance": [
       "Typo is corrected"
-    ]
+    ],
+    "next": "decompose"
   },
   "tree_summary": "root\n└── Fix typo (selected)",
   "context_goal": "Clean up documentation",

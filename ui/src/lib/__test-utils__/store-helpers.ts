@@ -72,6 +72,7 @@ export function createMockNode(partial: Partial<Node> = {}): Node {
     title: partial.title ?? `Test Node ${nodeCounter}`,
     goal: partial.goal ?? 'Test goal',
     acceptance: partial.acceptance ?? [],
+    next: partial.next ?? 'execute',
     passes: partial.passes ?? false,
     attempts: partial.attempts ?? 0,
     max_attempts: partial.max_attempts ?? 3,

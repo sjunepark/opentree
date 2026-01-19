@@ -35,19 +35,17 @@
 //!   write_context(goal, history, failure)
 //!   prompt_inputs = build_prompt_inputs(selected, tree_summary)
 //!
-//!   // Phase 1: Tree Agent (decide decompose or execute)
-//!   tree_decision = execute(tree_agent_prompt)
-//!   match tree_decision:
-//!     Decompose:
-//!       if children.is_empty(): return Retry
-//!       add_children(selected, tree_decision.children)
-//!       apply_state_updates(Decomposed)
-//!       return  // skip executor
+//!   // Phase 1: Route by selected.next
+//!   if selected.next == decompose:
+//!     // Decomposer Agent (produce children)
+//!     decomposition = execute(decomposer_prompt)
+//!     add_children(selected, decomposition.children)
+//!     apply_state_updates(Decomposed)
+//!     return  // skip executor
 //!
-//!     Execute:
-//!       // Phase 2: Executor Agent (perform work)
-//!       output = execute(executor_prompt + planner_summary)
-//!       next_tree = load_tree()  // agent may have modified it
+//!   // Phase 2: Executor Agent (perform work)
+//!   output = execute(executor_prompt)
+//!   next_tree = load_tree()  // agent may have modified it
 //!
 //!       // Validate agent contract
 //!       if immutability_violated(prev_tree, next_tree): return Retry

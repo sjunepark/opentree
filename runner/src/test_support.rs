@@ -17,7 +17,7 @@ use anyhow::{Context, Result, anyhow};
 #[cfg(feature = "test-support")]
 use tempfile::TempDir;
 
-use crate::core::types::{AgentOutput, GuardOutcome, TreeDecision};
+use crate::core::types::{AgentOutput, DecompositionOutput, GuardOutcome};
 use crate::io::config::RunnerConfig;
 #[cfg(feature = "test-support")]
 use crate::io::config::write_config;
@@ -28,7 +28,7 @@ use crate::io::run_state::{RunState, load_run_state};
 use crate::io::tree_store::{load_tree, write_tree};
 #[cfg(feature = "test-support")]
 use crate::start::{StartOutcome, start_run};
-use crate::tree::Node;
+use crate::tree::{Node, NodeNext};
 
 /// Ephemeral git repository harness for runner tests.
 ///
@@ -163,12 +163,12 @@ pub struct ScriptedExec {
 
 /// Supported scripted outputs for the executor interface.
 ///
-/// The runner invokes the executor for multiple roles (tree agent, executor agent),
+/// The runner invokes the executor for multiple roles (decomposer agent, executor agent),
 /// so tests must be able to script different JSON shapes.
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(untagged)]
 pub enum ScriptedOutput {
-    TreeDecision(TreeDecision),
+    DecompositionOutput(DecompositionOutput),
     AgentOutput(AgentOutput),
 }
 
@@ -317,6 +317,7 @@ pub fn node(id: &str, order: i64) -> Node {
         title: format!("{} title", id),
         goal: format!("{} goal", id),
         acceptance: Vec::new(),
+        next: NodeNext::Execute,
         passes: false,
         attempts: 0,
         max_attempts: 3,

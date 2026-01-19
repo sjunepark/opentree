@@ -3,7 +3,7 @@
 The "Prepare Context" phase (step 3 in the orchestration flow) has two parts:
 
 1. **`write_context()`** — Write ephemeral files for agent reference
-2. **Agent prompt assembly** — `TreeAgent`/`ExecutorAgent` build prompt packs via `PromptBuilder`
+2. **Agent prompt assembly** — `DecomposerAgent`/`ExecutorAgent` build prompt packs via `PromptBuilder`
 
 ## 1. Ephemeral Context Files
 
@@ -121,7 +121,7 @@ If still over budget after dropping all droppable sections, the last section get
                             │         ◄── questions.md
                             ▼
    ┌────────────────────────────┐
-   │ TreeAgent / ExecutorAgent  │
+   │ DecomposerAgent / ExecutorAgent │
    │  PromptBuilder.build_*()   │
    │     (40KB budget)          │
    └──────────────┬─────────────┘
@@ -144,7 +144,7 @@ If still over budget after dropping all droppable sections, the last section get
 
 ## Source Files
 
-- `runner/src/agents/tree.rs` — tree prompt assembly + execution
+- `runner/src/agents/decomposer.rs` — decomposer prompt assembly + execution
 - `runner/src/agents/executor.rs` — executor prompt assembly + execution
 - `runner/src/io/context.rs` — `write_context()`, `ContextPayload`
 - `runner/src/io/prompt.rs` — `PromptBuilder`, `PromptPack`, `PromptSection`

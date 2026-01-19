@@ -6,18 +6,18 @@ The runner wraps agent interactions in explicit structs so orchestration stays f
 
 ```text
 runner/src/agents/
-├── tree.rs     ← TreeAgent: decide execute vs decompose
+├── decomposer.rs ← DecomposerAgent: produce child specs
 ├── executor.rs ← ExecutorAgent: perform work on selected node
 └── mod.rs      ← shared helpers (schema writing)
 ```
 
 ## Responsibilities
 
-### TreeAgent
+### DecomposerAgent
 
 - **Side effects:** none (`allows_side_effects() == false`)
-- **Output:** `TreeDecision`
-- **Schema:** `.runner/state/tree_decision.schema.json`
+- **Output:** `DecompositionOutput`
+- **Schema:** `.runner/state/decomposer_output.schema.json`
 - **Artifacts:** writes `planner_output.json`, `planner_executor.log`, `planner_stream.jsonl`
 
 ### ExecutorAgent
@@ -48,7 +48,7 @@ The orchestration layer (`runner/src/step.rs`) owns state transitions and guard 
 
 ## Source Files
 
-- `runner/src/agents/tree.rs`
+- `runner/src/agents/decomposer.rs`
 - `runner/src/agents/executor.rs`
 - `runner/src/io/prompt.rs`
 - `runner/src/step.rs`

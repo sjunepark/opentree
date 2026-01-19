@@ -7,7 +7,7 @@
 use std::fs;
 
 use runner::core::types::{
-    AgentOutput, AgentStatus, GuardOutcome, TreeChildSpec, TreeDecision, TreeDecisionKind,
+    AgentOutput, AgentStatus, DecompositionOutput, GuardOutcome, TreeChildSpec,
 };
 use runner::io::config::RunnerConfig;
 use runner::io::git::Git;
@@ -66,16 +66,8 @@ fn full_lifecycle_completes_tree_with_retries() {
             .expect("git commit")
     );
 
-    // Queue: 3 steps → (tree agent + executor) per step = 6 executor invocations.
+    // Queue: 3 steps → executor invoked once per step.
     let executor = ScriptedExecutor::new(vec![
-        ScriptedExec {
-            output: ScriptedOutput::TreeDecision(TreeDecision {
-                decision: TreeDecisionKind::Execute,
-                summary: "execute".to_string(),
-                children: Vec::new(),
-            }),
-            tree_update: None,
-        },
         ScriptedExec {
             output: ScriptedOutput::AgentOutput(AgentOutput {
                 status: AgentStatus::Retry,
@@ -84,25 +76,9 @@ fn full_lifecycle_completes_tree_with_retries() {
             tree_update: None,
         },
         ScriptedExec {
-            output: ScriptedOutput::TreeDecision(TreeDecision {
-                decision: TreeDecisionKind::Execute,
-                summary: "execute".to_string(),
-                children: Vec::new(),
-            }),
-            tree_update: None,
-        },
-        ScriptedExec {
             output: ScriptedOutput::AgentOutput(AgentOutput {
                 status: AgentStatus::Done,
                 summary: "leaf-a complete".to_string(),
-            }),
-            tree_update: None,
-        },
-        ScriptedExec {
-            output: ScriptedOutput::TreeDecision(TreeDecision {
-                decision: TreeDecisionKind::Execute,
-                summary: "execute".to_string(),
-                children: Vec::new(),
             }),
             tree_update: None,
         },
@@ -248,25 +224,9 @@ fn guard_fail_reselection_loop() {
 
     let executor = ScriptedExecutor::new(vec![
         ScriptedExec {
-            output: ScriptedOutput::TreeDecision(TreeDecision {
-                decision: TreeDecisionKind::Execute,
-                summary: "execute".to_string(),
-                children: Vec::new(),
-            }),
-            tree_update: None,
-        },
-        ScriptedExec {
             output: ScriptedOutput::AgentOutput(AgentOutput {
                 status: AgentStatus::Done,
                 summary: "attempt 1".to_string(),
-            }),
-            tree_update: None,
-        },
-        ScriptedExec {
-            output: ScriptedOutput::TreeDecision(TreeDecision {
-                decision: TreeDecisionKind::Execute,
-                summary: "execute".to_string(),
-                children: Vec::new(),
             }),
             tree_update: None,
         },
@@ -278,25 +238,9 @@ fn guard_fail_reselection_loop() {
             tree_update: None,
         },
         ScriptedExec {
-            output: ScriptedOutput::TreeDecision(TreeDecision {
-                decision: TreeDecisionKind::Execute,
-                summary: "execute".to_string(),
-                children: Vec::new(),
-            }),
-            tree_update: None,
-        },
-        ScriptedExec {
             output: ScriptedOutput::AgentOutput(AgentOutput {
                 status: AgentStatus::Done,
                 summary: "attempt 3 success".to_string(),
-            }),
-            tree_update: None,
-        },
-        ScriptedExec {
-            output: ScriptedOutput::TreeDecision(TreeDecision {
-                decision: TreeDecisionKind::Execute,
-                summary: "execute".to_string(),
-                children: Vec::new(),
             }),
             tree_update: None,
         },
@@ -409,29 +353,22 @@ fn decomposition_changes_selection_path() {
 
     let executor = ScriptedExecutor::new(vec![
         ScriptedExec {
-            output: ScriptedOutput::TreeDecision(TreeDecision {
-                decision: TreeDecisionKind::Decompose,
+            output: ScriptedOutput::DecompositionOutput(DecompositionOutput {
                 summary: "split into children".to_string(),
                 children: vec![
                     TreeChildSpec {
                         title: "Child 1".to_string(),
                         goal: "Do child 1".to_string(),
                         acceptance: Vec::new(),
+                        next: runner::tree::NodeNext::Execute,
                     },
                     TreeChildSpec {
                         title: "Child 2".to_string(),
                         goal: "Do child 2".to_string(),
                         acceptance: Vec::new(),
+                        next: runner::tree::NodeNext::Execute,
                     },
                 ],
-            }),
-            tree_update: None,
-        },
-        ScriptedExec {
-            output: ScriptedOutput::TreeDecision(TreeDecision {
-                decision: TreeDecisionKind::Execute,
-                summary: "execute".to_string(),
-                children: Vec::new(),
             }),
             tree_update: None,
         },
@@ -439,14 +376,6 @@ fn decomposition_changes_selection_path() {
             output: ScriptedOutput::AgentOutput(AgentOutput {
                 status: AgentStatus::Done,
                 summary: "child-1 complete".to_string(),
-            }),
-            tree_update: None,
-        },
-        ScriptedExec {
-            output: ScriptedOutput::TreeDecision(TreeDecision {
-                decision: TreeDecisionKind::Execute,
-                summary: "execute".to_string(),
-                children: Vec::new(),
             }),
             tree_update: None,
         },
@@ -568,23 +497,13 @@ fn resumption_from_saved_state() {
             .expect("git commit")
     );
 
-    let executor = ScriptedExecutor::new(vec![
-        ScriptedExec {
-            output: ScriptedOutput::TreeDecision(TreeDecision {
-                decision: TreeDecisionKind::Execute,
-                summary: "execute".to_string(),
-                children: Vec::new(),
-            }),
-            tree_update: None,
-        },
-        ScriptedExec {
-            output: ScriptedOutput::AgentOutput(AgentOutput {
-                status: AgentStatus::Done,
-                summary: "open-child complete".to_string(),
-            }),
-            tree_update: None,
-        },
-    ]);
+    let executor = ScriptedExecutor::new(vec![ScriptedExec {
+        output: ScriptedOutput::AgentOutput(AgentOutput {
+            status: AgentStatus::Done,
+            summary: "open-child complete".to_string(),
+        }),
+        tree_update: None,
+    }]);
     let guard_runner = ScriptedGuardRunner::new(vec![ScriptedGuard {
         outcome: GuardOutcome::Pass,
         log: "ok".to_string(),

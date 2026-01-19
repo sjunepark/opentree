@@ -38,6 +38,7 @@ mod tests {
             title: "Root".to_string(),
             goal: "Root".to_string(),
             acceptance: Vec::new(),
+            next: crate::tree::NodeNext::Decompose,
             passes: false,
             attempts: 0,
             max_attempts: 3,

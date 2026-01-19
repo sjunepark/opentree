@@ -20,8 +20,8 @@ sequential, validated progress.
 ### Tree-first, schema-first state
 
 - The task tree is the machine-facing **source of truth** and is strictly validated every iteration.
-- The node schema stays intentionally small: no ad-hoc extension or “just add a field”.
-- New needs are represented via new nodes or runner-owned sidecars, not schema drift.
+- The node schema stays intentionally small; additions require explicit decisions and schema updates (no ad-hoc drift).
+- New needs are represented via new nodes or runner-owned sidecars when possible.
 
 ### Fresh context per iteration
 

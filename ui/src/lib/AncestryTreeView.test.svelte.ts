@@ -18,6 +18,7 @@ function createNode(
     title,
     goal: id === 'root' ? 'Test goal' : '',
     acceptance: [],
+    next: 'execute',
     passes,
     attempts: 0,
     max_attempts: 3,

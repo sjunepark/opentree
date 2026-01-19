@@ -1,11 +1,12 @@
 <!-- section:contract required -->
-### Tree Agent Contract
+### Decomposer Contract
 
 <contract>
-Tree agent contract:
+Decomposer contract:
 
-- Decide whether the selected node should be executed now (`decision=execute`) or decomposed (`decision=decompose`).
-- If `decision=decompose`, you MUST provide 1+ child specs in `children` (title, goal, optional acceptance).
+- You must decompose the selected node into child specs.
+- Provide 1+ child specs in `children` with `title`, `goal`, `acceptance` (optional), and `next`.
+- `next` controls what happens when that child becomes the selected leaf (`execute` or `decompose`).
 - Do NOT edit repository files in this step.
 - The runner owns `.runner/state/tree.json`; do NOT try to edit it to add children.
 
@@ -41,6 +42,7 @@ path: {{ selected.path }}
 id: {{ selected.id }}
 title: {{ selected.title }}
 goal: {{ selected.goal }}
+next: {{ selected.next }}
 {% if selected.acceptance %}acceptance:
 {% for item in selected.acceptance %}- {{ item }}
 {% endfor %}{% endif %}</selected>

@@ -10,7 +10,7 @@ use tracing::debug;
 
 use crate::tree::Node;
 
-const TREE_AGENT_TEMPLATE: &str = include_str!("prompts/tree_agent.md");
+const DECOMPOSER_TEMPLATE: &str = include_str!("prompts/decomposer.md");
 const EXECUTOR_TEMPLATE: &str = include_str!("prompts/executor.md");
 
 /// Selected node context for template rendering.
@@ -21,6 +21,7 @@ struct SelectedNodeContext {
     title: String,
     goal: String,
     acceptance: Vec<String>,
+    next: String,
 }
 
 impl SelectedNodeContext {
@@ -31,6 +32,7 @@ impl SelectedNodeContext {
             title: node.title.clone(),
             goal: node.goal.clone(),
             acceptance: node.acceptance.clone(),
+            next: node.next.as_str().to_string(),
         }
     }
 }
@@ -43,16 +45,16 @@ struct PromptEngine {
 impl PromptEngine {
     fn new() -> Self {
         let mut env = Environment::new();
-        env.add_template("tree_agent", TREE_AGENT_TEMPLATE)
-            .expect("tree_agent template should be valid");
+        env.add_template("decomposer", DECOMPOSER_TEMPLATE)
+            .expect("decomposer template should be valid");
         env.add_template("executor", EXECUTOR_TEMPLATE)
             .expect("executor template should be valid");
         Self { env }
     }
 
-    fn render_tree_agent(&self, input: &PromptInputs) -> Result<String> {
+    fn render_decomposer(&self, input: &PromptInputs) -> Result<String> {
         let selected = SelectedNodeContext::from_node(&input.selected_path, &input.selected_node);
-        let template = self.env.get_template("tree_agent")?;
+        let template = self.env.get_template("decomposer")?;
         let rendered = template.render(context! {
             goal => input.context_goal.trim(),
             history => input.context_history.as_deref().map(str::trim).filter(|s| !s.is_empty()),
@@ -255,12 +257,12 @@ impl PromptBuilder {
         Self { budget_bytes }
     }
 
-    /// Build a prompt pack for the tree agent.
-    pub fn build_tree_agent(&self, input: &PromptInputs) -> PromptPack {
+    /// Build a prompt pack for the decomposer agent.
+    pub fn build_decomposer(&self, input: &PromptInputs) -> PromptPack {
         let engine = PromptEngine::new();
         let rendered = engine
-            .render_tree_agent(input)
-            .expect("tree_agent template rendering should not fail");
+            .render_decomposer(input)
+            .expect("decomposer template rendering should not fail");
 
         let mut sections = parse_sections(&rendered);
         apply_budget_to_sections(&mut sections, self.budget_bytes);
@@ -418,7 +420,7 @@ mod tests {
             questions: "".to_string(),
         };
 
-        let pack = PromptBuilder::new(10_000).build_tree_agent(&input);
+        let pack = PromptBuilder::new(10_000).build_decomposer(&input);
         let content = pack.render();
 
         assert!(content.contains("<contract>"), "should have contract tag");

@@ -14,6 +14,7 @@ function createNode(
     title: id,
     goal: '',
     acceptance: [],
+    next: 'execute',
     passes,
     attempts: 0,
     max_attempts: 3,

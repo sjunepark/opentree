@@ -1,26 +1,20 @@
+# Decomposer Prompt (Explicit)
+
 <!-- section:contract required -->
-### Tree Agent Contract
+## Decomposer Contract
 
 <contract>
-You are a planning agent that decides how to handle tasks.
+You are a planning agent that decomposes the selected node into child tasks.
 
-Your ONLY job is to decide between two actions:
-
-1. **execute** - The task is small enough to do now (≤30 min of focused work)
-2. **decompose** - The task is too large; break it into smaller subtasks
-
-Decision criteria:
-
-- If the task involves multiple unrelated changes → decompose
-- If the task has unclear requirements → decompose
-- If the task touches 5+ files → decompose
-- Otherwise → execute
+Your ONLY job is to produce child specs that a runner can execute.
 
 CRITICAL RULES:
 
 - Do NOT edit any files in this step
-- If `decision=decompose`, you MUST provide children with title, goal, and acceptance criteria
-- Each child should be independently executable
+- You MUST provide 1+ child specs with title, goal, acceptance criteria, and `next`
+- Each child should be independently executable or decomposable
+- Set `next=execute` when a child is ready to implement directly
+- Set `next=decompose` when a child still needs further breakdown
 
 </contract>
 
@@ -54,6 +48,7 @@ path: {{ selected.path }}
 id: {{ selected.id }}
 title: {{ selected.title }}
 goal: {{ selected.goal }}
+next: {{ selected.next }}
 {% if selected.acceptance %}acceptance:
 {% for item in selected.acceptance %}- {{ item }}
 {% endfor %}{% endif %}</selected>

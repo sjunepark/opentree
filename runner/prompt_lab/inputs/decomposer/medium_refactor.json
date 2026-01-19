@@ -9,7 +9,8 @@
       "ValidationHelper exists with extracted methods",
       "UserController uses ValidationHelper",
       "All existing tests pass"
-    ]
+    ],
+    "next": "decompose"
   },
   "tree_summary": "root\n├── Setup project\n└── Extract helper functions (selected)",
   "context_goal": "Improve code maintainability through refactoring",

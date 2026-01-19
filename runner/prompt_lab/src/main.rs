@@ -6,7 +6,7 @@ mod cache;
 mod render;
 mod runner;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
@@ -25,7 +25,7 @@ struct Cli {
 enum Commands {
     /// Run prompt × input combinations for an agent
     Run {
-        /// Agent name (e.g., tree_agent)
+        /// Agent name (e.g., decomposer)
         agent: String,
 
         /// Force re-run even if cached
@@ -42,7 +42,7 @@ enum Commands {
 
     /// List available prompts and inputs
     List {
-        /// Agent name (e.g., tree_agent)
+        /// Agent name (e.g., decomposer)
         agent: Option<String>,
     },
 }
@@ -101,7 +101,7 @@ fn find_lab_root() -> Result<PathBuf> {
 }
 
 /// Serve static files for dashboard.
-fn serve_dashboard(lab_root: &PathBuf, port: u16) -> Result<()> {
+fn serve_dashboard(lab_root: &Path, port: u16) -> Result<()> {
     let dashboard_dir = lab_root.join("dashboard").join("build");
     let results_dir = lab_root.join("results");
 
@@ -130,7 +130,7 @@ fn serve_dashboard(lab_root: &PathBuf, port: u16) -> Result<()> {
 }
 
 /// List available prompts and inputs.
-fn list_resources(lab_root: &PathBuf, agent: Option<&str>) -> Result<()> {
+fn list_resources(lab_root: &Path, agent: Option<&str>) -> Result<()> {
     let prompts_dir = lab_root.join("prompts");
     let inputs_dir = lab_root.join("inputs");
 
@@ -144,7 +144,7 @@ fn list_resources(lab_root: &PathBuf, agent: Option<&str>) -> Result<()> {
         if agent_prompts.exists() {
             for entry in std::fs::read_dir(&agent_prompts)? {
                 let entry = entry?;
-                if entry.path().extension().map_or(false, |e| e == "md") {
+                if entry.path().extension().is_some_and(|e| e == "md") {
                     println!("  - {}", entry.file_name().to_string_lossy());
                 }
             }
@@ -156,7 +156,7 @@ fn list_resources(lab_root: &PathBuf, agent: Option<&str>) -> Result<()> {
         if agent_inputs.exists() {
             for entry in std::fs::read_dir(&agent_inputs)? {
                 let entry = entry?;
-                if entry.path().extension().map_or(false, |e| e == "json") {
+                if entry.path().extension().is_some_and(|e| e == "json") {
                     println!("  - {}", entry.file_name().to_string_lossy());
                 }
             }

@@ -7,8 +7,8 @@ Iteration logs are the audit trail for debugging. They enable post-mortem analys
 ```text
 .runner/iterations/{run-id}/{iter}/
 ├── meta.json           ← iteration metadata (timing, node, outcome)
-├── planner_output.json ← tree agent decision (execute/decompose)
-├── planner_executor.log ← executor (codex) stdout/stderr for tree agent
+├── planner_output.json ← decomposer output (child specs)
+├── planner_executor.log ← executor (codex) stdout/stderr for decomposer agent
 ├── output.json         ← iteration status + summary
 ├── executor.log        ← executor (codex) stdout/stderr for executor agent (execute only)
 ├── guard.log           ← guard stdout/stderr (only when status=done)
@@ -23,8 +23,8 @@ All logs are **local-only** and **gitignored**. They don't pollute repo history 
 
 | File | When Written | Trigger |
 |------|--------------|---------|
-| `planner_output.json` | During tree-agent phase | Written by `execute_and_load_json()` after tree agent completes |
-| `planner_executor.log` | After tree-agent completes | `write_executor_log()` captures command output |
+| `planner_output.json` | During decomposer phase | Written by `execute_and_load_json()` after decomposer completes |
+| `planner_executor.log` | After decomposer completes | `write_executor_log()` captures command output |
 | `output.json` | At iteration end | Runner-written canonical output for the iteration (status + summary) |
 | `executor.log` | After executor completes | Written only when the executor agent runs |
 | `guard.log` | After guards complete | Only when `status=done`; guards skip on retry |
@@ -80,12 +80,19 @@ Agent's structured output:
 
 ### planner_output.json
 
-Tree agent decision output:
+Decomposer output:
 
 ```json
 {
-  "decision": "execute",
-  "summary": "Looks executable as-is."
+  "summary": "Split into two executable tasks.",
+  "children": [
+    {
+      "title": "Implement login flow",
+      "goal": "Add OAuth2 login endpoints and callback handling.",
+      "acceptance": ["Login succeeds with Google"],
+      "next": "execute"
+    }
+  ]
 }
 ```
 

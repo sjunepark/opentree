@@ -16,6 +16,7 @@
       title,
       goal: id === 'root' ? 'Complete the authentication system' : '',
       acceptance: [],
+      next: 'execute',
       passes,
       attempts: passes ? 1 : 0,
       max_attempts: 3,

@@ -60,8 +60,8 @@ impl ResultCache {
         }
 
         debug!(path = %path.display(), "loading cached result");
-        let content = fs::read_to_string(&path)
-            .with_context(|| format!("read cache {}", path.display()))?;
+        let content =
+            fs::read_to_string(&path).with_context(|| format!("read cache {}", path.display()))?;
         let result: CombinationResult = serde_json::from_str(&content)
             .with_context(|| format!("parse cache {}", path.display()))?;
         Ok(Some(result))
@@ -103,14 +103,14 @@ impl ResultCache {
 
             // Skip index.json
             let path = prompt_entry.path();
-            if path.file_name().map_or(false, |n| n == "index.json") {
+            if path.file_name().is_some_and(|n| n == "index.json") {
                 continue;
             }
 
             for input_entry in fs::read_dir(prompt_entry.path())? {
                 let input_entry = input_entry?;
                 let path = input_entry.path();
-                if path.extension().map_or(false, |e| e == "json") {
+                if path.extension().is_some_and(|e| e == "json") {
                     let content = fs::read_to_string(&path)?;
                     if let Ok(result) = serde_json::from_str::<CombinationResult>(&content) {
                         results.push(result);
@@ -184,7 +184,7 @@ mod tests {
     fn test_cache_path() {
         let temp = tempfile::tempdir().unwrap();
         let cache = ResultCache::new(temp.path());
-        let path = cache.cache_path("tree_agent", "abc123", "test_input");
-        assert!(path.ends_with("results/tree_agent/abc123/test_input.json"));
+        let path = cache.cache_path("decomposer", "abc123", "test_input");
+        assert!(path.ends_with("results/decomposer/abc123/test_input.json"));
     }
 }

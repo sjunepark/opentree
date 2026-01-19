@@ -7,8 +7,9 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
-use runner::core::types::TreeDecision;
+use runner::core::types::DecompositionOutput;
 use runner::io::executor::{CodexExecutor, ExecRequest, execute_and_load_json};
+use runner::tree::NodeNext;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, info, warn};
 
@@ -23,6 +24,12 @@ pub struct SelectedNode {
     pub goal: String,
     #[serde(default)]
     pub acceptance: Vec<String>,
+    #[serde(default = "default_next")]
+    pub next: NodeNext,
+}
+
+fn default_next() -> NodeNext {
+    NodeNext::Decompose
 }
 
 /// Test input for a prompt combination.
@@ -43,7 +50,7 @@ pub struct TestInput {
     pub assumptions: Option<String>,
     #[serde(default)]
     pub questions: Option<String>,
-    /// Expected decision for validation (execute or decompose).
+    /// Expected next classification inferred from children (execute or decompose).
     #[serde(default)]
     pub expected_decision: Option<String>,
 }
@@ -58,7 +65,7 @@ pub struct CombinationResult {
     pub expected_decision: Option<String>,
     pub actual_decision: Option<String>,
     pub matches_expected: Option<bool>,
-    pub output: Option<TreeDecision>,
+    pub output: Option<DecompositionOutput>,
     pub error: Option<String>,
     pub duration_ms: u64,
     pub timestamp: String,
@@ -134,7 +141,11 @@ pub fn run_agent(lab_root: &Path, agent: &str, force: bool) -> Result<()> {
     // Generate index.json for dashboard
     cache.generate_index(agent)?;
 
-    println!("\nResults saved to: {}/results/{}/", lab_root.display(), agent);
+    println!(
+        "\nResults saved to: {}/results/{}/",
+        lab_root.display(),
+        agent
+    );
     Ok(())
 }
 
@@ -149,7 +160,7 @@ fn discover_prompts(lab_root: &Path, agent: &str) -> Result<Vec<Prompt>> {
     for entry in fs::read_dir(&prompts_dir)? {
         let entry = entry?;
         let path = entry.path();
-        if path.extension().map_or(false, |e| e == "md") {
+        if path.extension().is_some_and(|e| e == "md") {
             let name = path
                 .file_stem()
                 .unwrap_or_default()
@@ -182,7 +193,7 @@ fn discover_inputs(lab_root: &Path, agent: &str) -> Result<Vec<TestInput>> {
     for entry in fs::read_dir(&inputs_dir)? {
         let entry = entry?;
         let path = entry.path();
-        if path.extension().map_or(false, |e| e == "json") {
+        if path.extension().is_some_and(|e| e == "json") {
             let content = fs::read_to_string(&path)
                 .with_context(|| format!("read input {}", path.display()))?;
             let input: TestInput = serde_json::from_str(&content)
@@ -234,7 +245,7 @@ fn run_combination(
     let log_path = temp_dir.join(format!("{}_log.txt", run_id));
 
     // Find the schema path
-    let schema_path = find_schema_path(lab_root, "tree_decision")?;
+    let schema_path = find_schema_path(lab_root, "decomposer_output")?;
 
     let request = ExecRequest {
         workdir: lab_root.to_path_buf(),
@@ -248,7 +259,7 @@ fn run_combination(
     };
 
     // Execute
-    let output_result: Result<TreeDecision> = execute_and_load_json(executor, &request);
+    let output_result: Result<DecompositionOutput> = execute_and_load_json(executor, &request);
 
     let (output, error) = match output_result {
         Ok(decision) => (Some(decision), None),
@@ -258,7 +269,13 @@ fn run_combination(
         }
     };
 
-    let actual_decision = output.as_ref().map(|o| format!("{:?}", o.decision).to_lowercase());
+    let actual_decision = output.as_ref().map(|o| {
+        if o.children.iter().any(|c| c.next == NodeNext::Decompose) {
+            "decompose".to_string()
+        } else {
+            "execute".to_string()
+        }
+    });
     let matches_expected = match (&input.expected_decision, &actual_decision) {
         (Some(expected), Some(actual)) => Some(expected.to_lowercase() == *actual),
         _ => None,
@@ -279,18 +296,24 @@ fn run_combination(
     })
 }
 
-/// Find the JSON schema for tree decisions.
+/// Find the JSON schema for decomposer outputs.
 fn find_schema_path(lab_root: &Path, schema_name: &str) -> Result<PathBuf> {
     // Look in common locations
     let candidates = [
-        lab_root.join("schemas").join(format!("{}.json", schema_name)),
+        lab_root
+            .join("schemas")
+            .join(format!("{}.json", schema_name)),
         lab_root
             .parent()
             .map(|p| p.join("schemas").join(format!("{}.json", schema_name)))
             .unwrap_or_default(),
         lab_root
             .parent()
-            .map(|p| p.join(".runner").join("schemas").join(format!("{}.json", schema_name)))
+            .map(|p| {
+                p.join(".runner")
+                    .join("schemas")
+                    .join(format!("{}.json", schema_name))
+            })
             .unwrap_or_default(),
     ];
 

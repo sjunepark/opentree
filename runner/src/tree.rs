@@ -5,6 +5,23 @@
 
 use serde::{Deserialize, Serialize};
 
+/// Declared next step for a node when it becomes the selected leaf.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum NodeNext {
+    Execute,
+    Decompose,
+}
+
+impl NodeNext {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            NodeNext::Execute => "execute",
+            NodeNext::Decompose => "decompose",
+        }
+    }
+}
+
 /// A node in the task tree, representing a goal or sub-goal.
 ///
 /// Nodes form a tree where leaves are executable tasks. The runner traverses
@@ -20,6 +37,8 @@ pub struct Node {
     pub goal: String,
     /// Criteria that must hold for `passes` to become true.
     pub acceptance: Vec<String>,
+    /// Action to take when this node is selected as a leaf.
+    pub next: NodeNext,
     /// Whether this node's goal has been achieved.
     pub passes: bool,
     /// How many agent executions have been recorded for this node.
@@ -56,6 +75,7 @@ pub fn default_tree_with_max_attempts(max_attempts: u32) -> Node {
         title: "Root".to_string(),
         goal: "Top-level goal (see .runner/GOAL.md)".to_string(),
         acceptance: Vec::new(),
+        next: NodeNext::Decompose,
         passes: false,
         attempts: 0,
         max_attempts,

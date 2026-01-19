@@ -6,6 +6,7 @@ export interface Node {
   title: string;
   goal: string;
   acceptance: string[];
+  next: 'execute' | 'decompose';
   passes: boolean;
   attempts: number;
   max_attempts: number;

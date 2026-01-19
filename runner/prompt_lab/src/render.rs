@@ -20,6 +20,7 @@ pub struct SelectedNodeContext {
     pub title: String,
     pub goal: String,
     pub acceptance: Vec<String>,
+    pub next: String,
 }
 
 impl SelectedNodeContext {
@@ -30,6 +31,7 @@ impl SelectedNodeContext {
             title: input.selected_node.title.clone(),
             goal: input.selected_node.goal.clone(),
             acceptance: input.selected_node.acceptance.clone(),
+            next: input.selected_node.next.as_str().to_string(),
         }
     }
 }
@@ -78,7 +80,8 @@ mod tests {
 
     #[test]
     fn test_strip_section_markers() {
-        let input = "<!-- section:contract required -->\nContent\n<!-- section:goal droppable -->\nMore";
+        let input =
+            "<!-- section:contract required -->\nContent\n<!-- section:goal droppable -->\nMore";
         let output = strip_section_markers(input);
         assert_eq!(output, "\nContent\n\nMore");
     }
@@ -87,7 +90,11 @@ mod tests {
     fn test_render_minimal_template() {
         let temp_dir = tempfile::tempdir().unwrap();
         let template_path = temp_dir.path().join("test.md");
-        fs::write(&template_path, "Goal: {{ goal }}\nTitle: {{ selected.title }}").unwrap();
+        fs::write(
+            &template_path,
+            "Goal: {{ goal }}\nTitle: {{ selected.title }}",
+        )
+        .unwrap();
 
         let input = TestInput {
             id: "test".to_string(),
@@ -97,6 +104,7 @@ mod tests {
                 title: "Test Node".to_string(),
                 goal: "Do something".to_string(),
                 acceptance: vec![],
+                next: runner::tree::NodeNext::Decompose,
             },
             tree_summary: None,
             context_goal: "Build feature".to_string(),

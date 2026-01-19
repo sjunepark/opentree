@@ -51,6 +51,7 @@ path: {{ selected.path }}
 id: {{ selected.id }}
 title: {{ selected.title }}
 goal: {{ selected.goal }}
+next: {{ selected.next }}
 {% if selected.acceptance %}acceptance:
 {% for item in selected.acceptance %}- {{ item }}
 {% endfor %}{% endif %}</selected>

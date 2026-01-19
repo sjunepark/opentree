@@ -5,7 +5,7 @@
 	let grid: ResultGrid = $state({ prompts: [], inputs: [], results: new Map() });
 	let selectedResult: CombinationResult | null = $state(null);
 	let loading = $state(true);
-	let agent = 'tree_agent';
+	let agent = 'decomposer';
 
 	// Load data on mount
 	$effect(() => {

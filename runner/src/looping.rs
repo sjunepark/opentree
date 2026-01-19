@@ -124,14 +124,13 @@ pub fn run_loop<E: Executor, G: GuardRunner, F: FnMut(&StepOutcome)>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::types::{
-        AgentOutput, AgentStatus, GuardOutcome, TreeDecision, TreeDecisionKind,
-    };
+    use crate::core::types::{AgentOutput, AgentStatus, GuardOutcome};
     use crate::io::config::{RunnerConfig, write_config};
     use crate::io::git::Git;
     use crate::test_support::{
         ScriptedExec, ScriptedExecutor, ScriptedGuardRunner, ScriptedOutput, TestRepo,
     };
+    use crate::tree::NodeNext;
 
     #[test]
     fn loop_stops_on_complete_without_calling_step_again() {
@@ -152,23 +151,23 @@ mod tests {
         git.add_all().expect("git add");
         assert!(git.commit_staged("chore: set config").expect("git commit"));
 
-        let executor = ScriptedExecutor::new(vec![
-            ScriptedExec {
-                output: ScriptedOutput::TreeDecision(TreeDecision {
-                    decision: TreeDecisionKind::Execute,
-                    summary: "execute".to_string(),
-                    children: Vec::new(),
-                }),
-                tree_update: None,
-            },
-            ScriptedExec {
-                output: ScriptedOutput::AgentOutput(AgentOutput {
-                    status: AgentStatus::Done,
-                    summary: "done".to_string(),
-                }),
-                tree_update: None,
-            },
-        ]);
+        let mut tree = repo.read_tree().expect("read tree");
+        tree.next = NodeNext::Execute;
+        repo.write_tree(&tree).expect("write tree");
+        let git = Git::new(root);
+        git.add_all().expect("git add");
+        assert!(
+            git.commit_staged("chore: set root next")
+                .expect("git commit")
+        );
+
+        let executor = ScriptedExecutor::new(vec![ScriptedExec {
+            output: ScriptedOutput::AgentOutput(AgentOutput {
+                status: AgentStatus::Done,
+                summary: "done".to_string(),
+            }),
+            tree_update: None,
+        }]);
         let guard_runner = ScriptedGuardRunner::new(vec![crate::test_support::ScriptedGuard {
             outcome: GuardOutcome::Pass,
             log: "ok".to_string(),
@@ -205,23 +204,23 @@ mod tests {
         git.add_all().expect("git add");
         assert!(git.commit_staged("chore: set config").expect("git commit"));
 
-        let executor = ScriptedExecutor::new(vec![
-            ScriptedExec {
-                output: ScriptedOutput::TreeDecision(TreeDecision {
-                    decision: TreeDecisionKind::Execute,
-                    summary: "execute".to_string(),
-                    children: Vec::new(),
-                }),
-                tree_update: None,
-            },
-            ScriptedExec {
-                output: ScriptedOutput::AgentOutput(AgentOutput {
-                    status: AgentStatus::Retry,
-                    summary: "keep going".to_string(),
-                }),
-                tree_update: None,
-            },
-        ]);
+        let mut tree = repo.read_tree().expect("read tree");
+        tree.next = NodeNext::Execute;
+        repo.write_tree(&tree).expect("write tree");
+        let git = Git::new(root);
+        git.add_all().expect("git add");
+        assert!(
+            git.commit_staged("chore: set root next")
+                .expect("git commit")
+        );
+
+        let executor = ScriptedExecutor::new(vec![ScriptedExec {
+            output: ScriptedOutput::AgentOutput(AgentOutput {
+                status: AgentStatus::Retry,
+                summary: "keep going".to_string(),
+            }),
+            tree_update: None,
+        }]);
         let guard_runner = ScriptedGuardRunner::new(Vec::new());
 
         let outcome = run_loop(

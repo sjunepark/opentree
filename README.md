@@ -79,7 +79,7 @@ Runner-owned state (long-lived):
 - `.runner/state/run_state.json` — run/iteration bookkeeping (runner-owned).
 - `.runner/state/assumptions.md` — accumulated assumptions (agent may append).
 - `.runner/state/questions.md` — open questions for human review (agent may append).
-- `.runner/state/tree_decision.schema.json` — JSON Schema for tree-agent decisions (runner-written).
+- `.runner/state/decomposer_output.schema.json` — JSON Schema for decomposer outputs (runner-written).
 - `.runner/state/executor_output.schema.json` — JSON Schema for executor agent output (runner-written).
 
 Ephemeral context (rewritten each iteration):
