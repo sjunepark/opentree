@@ -212,39 +212,27 @@ $effect (tree.id change) ──► resets manuallyExpanded + selection
     cursor: grabbing;
   }
 
-  /* Global styles for SVG elements rendered by D3 */
-  :global(.ancestry-tree-view .link) {
+  /* Styles for D3-rendered SVG elements (parent scoped, children global) */
+  .ancestry-tree-view :global(.link) {
     transition: stroke 0.15s ease;
   }
 
-  :global(.ancestry-tree-view .node) {
+  .ancestry-tree-view :global(.node) {
     transition: opacity 0.15s ease;
   }
 
-  :global(.ancestry-tree-view .node:hover) {
+  .ancestry-tree-view :global(.node:hover) {
     opacity: 1 !important;
   }
 
-  :global(.ancestry-tree-view .node:hover .node-rect) {
+  .ancestry-tree-view :global(.node:hover .node-rect) {
     fill: #f1f5f9;
   }
 
-  :global(.ancestry-tree-view .node-title) {
-    user-select: none;
-    pointer-events: none;
-  }
-
-  :global(.ancestry-tree-view .node-goal) {
-    user-select: none;
-    pointer-events: none;
-  }
-
-  :global(.ancestry-tree-view .status-badge-text) {
-    user-select: none;
-    pointer-events: none;
-  }
-
-  :global(.ancestry-tree-view .collapse-badge-text) {
+  .ancestry-tree-view :global(.node-title),
+  .ancestry-tree-view :global(.node-goal),
+  .ancestry-tree-view :global(.status-badge-text),
+  .ancestry-tree-view :global(.collapse-badge-text) {
     user-select: none;
     pointer-events: none;
   }
