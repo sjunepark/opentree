@@ -192,16 +192,16 @@ The runner distinguishes between:
 
 - **Runner-internal errors** (executor spawn/timeout, guard runner failures, git failures): `run_step()`
   returns an error and does **not** consume a node attempt.
-- **Agent contract violations** (tree invalid after execution, immutability violation, status
+- **Agent errors** (tree invalid after execution, immutability violation, status
   invariant violation, disallowed child additions): the runner restores a valid tree snapshot,
-  writes `runner_error.log`, and records `status=retry` with an error summary (consumes an attempt).
+  writes `agent_error.log`, and records `status=retry` with an error summary (consumes an attempt).
 
-This keeps the loop automation-first: contract violations become actionable feedback to the next
+This keeps the loop automation-first: agent errors become actionable feedback to the next
 iteration, while true infrastructure failures still stop.
 
 ## Error Reporting
 
-- Contract violations are recorded in the iteration’s `runner_error.log` and surfaced to the next
+- Agent errors are recorded in the iteration’s `agent_error.log` and surfaced to the next
   iteration via `history.md` (as a retry summary).
 - Runner-internal errors are recorded in `runner_error.log` but are not propagated into agent
   context (`history.md` / `failure.md`).

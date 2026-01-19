@@ -88,7 +88,7 @@ Runner-internal errors are not fed back to the node agent via `.runner/context/h
 
 Code: `runner/src/step.rs` `run_step()` recovery `match attempt { ... }`
 
-### Agent Contract Violations
+### Agent Errors
 
 Some failures are caused by the agent producing an invalid or disallowed tree edit (e.g., immutability
 violation, status invariants, disallowed child additions, or an invalid tree after execution). These are
@@ -96,7 +96,7 @@ treated as **agent retries**:
 
 | Condition | `status` | `guard_outcome` | `attempts` | Feedback |
 |-----------|----------|-----------------|------------|----------|
-| Agent contract violation | Retry | Skipped | `+1` (saturating) | Summary propagated via `history.md` |
+| Agent error | Retry | Skipped | `+1` (saturating) | Summary propagated via `history.md` and logged to `agent_error.log` |
 
 ## Flow Summary
 

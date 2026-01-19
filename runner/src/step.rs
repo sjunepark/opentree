@@ -64,6 +64,7 @@ struct StepAttemptResult {
     guard: GuardOutcome,
     tree_after: Node,
     runner_error_log: Option<String>,
+    agent_error_log: Option<String>,
 }
 
 struct AttemptContext<'a, E: Executor> {
@@ -220,6 +221,7 @@ pub fn run_step<E: Executor, G: GuardRunner>(
 
     let guard_log_path = iter_dir.join("guard.log");
     let runner_error_log_path = iter_dir.join("runner_error.log");
+    let agent_error_log_path = iter_dir.join("agent_error.log");
 
     let mut step_error: Option<anyhow::Error> = None;
     let attempt_ctx = AttemptContext {
@@ -264,6 +266,7 @@ pub fn run_step<E: Executor, G: GuardRunner>(
                 guard,
                 tree_after,
                 runner_error_log,
+                agent_error_log: None,
             }
         }
     };
@@ -276,11 +279,20 @@ pub fn run_step<E: Executor, G: GuardRunner>(
             .with_context(|| format!("write {}", runner_error_log_path.display()))?;
     }
 
+    if let Some(contents) = &attempt_result.agent_error_log {
+        if let Some(parent) = agent_error_log_path.parent() {
+            fs::create_dir_all(parent).with_context(|| format!("create {}", parent.display()))?;
+        }
+        fs::write(&agent_error_log_path, format!("{contents}\n"))
+            .with_context(|| format!("write {}", agent_error_log_path.display()))?;
+    }
+
     let StepAttemptResult {
         output,
         guard: guard_outcome,
         tree_after,
         runner_error_log: _,
+        agent_error_log: _,
     } = attempt_result;
 
     let guard_log = fs::read_to_string(&guard_log_path).ok();
@@ -355,10 +367,11 @@ fn attempt_decompose<E: Executor>(
     )?;
 
     if decomposition.children.is_empty() {
-        return Err(anyhow!(
-            "decomposer returned empty children list for '{}'",
+        let msg = format!(
+            "agent error: decomposer returned empty children list for '{}'",
             ctx.selected_id
-        ));
+        );
+        return retry_with_log(ctx.prev_tree, ctx.tree_path, ctx.selected_id, msg);
     }
 
     let next_tree = decompose_tree(
@@ -405,6 +418,7 @@ fn attempt_decompose<E: Executor>(
         guard: guard_outcome,
         tree_after: updated_tree,
         runner_error_log: None,
+        agent_error_log: None,
     })
 }
 
@@ -431,24 +445,24 @@ fn attempt_execute<E: Executor, G: GuardRunner>(
         }
     };
 
-    // Treat post-exec tree violations as agent contract errors (retry with context),
+    // Treat post-exec tree violations as agent errors (retry with context),
     // rather than hard-stopping the loop.
-    let mut contract_errors = Vec::new();
-    contract_errors.extend(check_passed_node_immutability(ctx.prev_tree, &next_tree));
-    contract_errors.extend(validate_child_additions_restricted(
+    let mut agent_errors = Vec::new();
+    agent_errors.extend(check_passed_node_immutability(ctx.prev_tree, &next_tree));
+    agent_errors.extend(validate_child_additions_restricted(
         ctx.prev_tree,
         &next_tree,
         None,
     ));
-    contract_errors.extend(validate_status_invariants(
+    agent_errors.extend(validate_status_invariants(
         ctx.prev_tree,
         &next_tree,
         ctx.selected_id,
         output.status,
     ));
-    if !contract_errors.is_empty() {
-        contract_errors.sort();
-        let msg = format!("agent contract violation: {}", contract_errors.join("; "));
+    if !agent_errors.is_empty() {
+        agent_errors.sort();
+        let msg = format!("agent error: {}", agent_errors.join("; "));
         return retry_with_log(ctx.prev_tree, ctx.tree_path, ctx.selected_id, msg);
     }
 
@@ -484,6 +498,7 @@ fn attempt_execute<E: Executor, G: GuardRunner>(
         guard: guard_outcome,
         tree_after: updated_tree,
         runner_error_log: None,
+        agent_error_log: None,
     })
 }
 
@@ -519,7 +534,8 @@ fn retry_with_log(
         output,
         guard: GuardOutcome::Skipped,
         tree_after,
-        runner_error_log: Some(msg),
+        runner_error_log: None,
+        agent_error_log: Some(msg),
     })
 }
 
@@ -1193,9 +1209,9 @@ mod tests {
         assert!(guard_runner.last_request().is_none());
     }
 
-    /// Verifies the runner errors when the decomposer returns no children.
+    /// Verifies decomposer agent errors trigger retry and log diagnostics.
     #[test]
-    fn step_errors_when_decomposer_returns_empty_children() {
+    fn step_retries_when_decomposer_returns_empty_children() {
         let repo = TestRepo::new().expect("repo");
         let root = repo.root();
         let start = repo.start_run().expect("start");
@@ -1218,20 +1234,17 @@ mod tests {
         }]);
         let guard_runner = ScriptedGuardRunner::new(Vec::new());
 
-        let err =
-            run_step(root, &executor, &guard_runner, &StepConfig::default()).expect_err("step");
-        assert!(
-            err.to_string()
-                .contains("decomposer returned empty children list")
-        );
+        let outcome =
+            run_step(root, &executor, &guard_runner, &StepConfig::default()).expect("step");
+        assert_eq!(outcome.status, AgentStatus::Retry);
 
         let iter_dir = root
             .join(".runner/iterations")
             .join(&start.run_id)
             .join("1");
-        let runner_error =
-            fs::read_to_string(iter_dir.join("runner_error.log")).expect("read runner_error.log");
-        assert!(runner_error.contains("decomposer returned empty children list"));
+        let agent_error =
+            fs::read_to_string(iter_dir.join("agent_error.log")).expect("read agent_error.log");
+        assert!(agent_error.contains("decomposer returned empty children list"));
 
         guard_runner.assert_drained().expect("guard drained");
         executor.assert_drained().expect("executor drained");
@@ -1278,9 +1291,9 @@ mod tests {
             .join(".runner/iterations")
             .join(&start.run_id)
             .join("1");
-        let runner_error =
-            fs::read_to_string(iter_dir.join("runner_error.log")).expect("read runner_error.log");
-        assert!(runner_error.contains("passed node 'done' changed"));
+        let agent_error =
+            fs::read_to_string(iter_dir.join("agent_error.log")).expect("read agent_error.log");
+        assert!(agent_error.contains("passed node 'done' changed"));
 
         guard_runner.assert_drained().expect("guard drained");
         executor.assert_drained().expect("executor drained");

@@ -12,7 +12,8 @@ Iteration logs are the audit trail for debugging. They enable post-mortem analys
 ├── output.json         ← iteration status + summary
 ├── executor.log        ← executor (codex) stdout/stderr for executor agent (execute only)
 ├── guard.log           ← guard stdout/stderr (only when status=done)
-├── runner_error.log    ← runner-detected failures (runner-internal or agent contract violations)
+├── agent_error.log     ← agent errors that force retry
+├── runner_error.log    ← runner-internal failures (no attempt consumed)
 ├── tree.before.json    ← tree snapshot pre-iteration
 └── tree.after.json     ← tree snapshot post-iteration
 ```
@@ -28,7 +29,8 @@ All logs are **local-only** and **gitignored**. They don't pollute repo history 
 | `output.json` | At iteration end | Runner-written canonical output for the iteration (status + summary) |
 | `executor.log` | After executor completes | Written only when the executor agent runs |
 | `guard.log` | After guards complete | Only when `status=done`; guards skip on retry |
-| `runner_error.log` | On failure | Runner-internal errors and agent contract violations that force retry |
+| `agent_error.log` | On agent error | Agent errors that force retry |
+| `runner_error.log` | On failure | Runner-internal errors (no attempt consumed) |
 | `tree.before.json` | At iteration end | Snapshot of tree before agent ran |
 | `tree.after.json` | At iteration end | Snapshot after all updates applied |
 | `meta.json` | At iteration end | First file written in `write_iteration()` |
@@ -127,15 +129,27 @@ Guard command output, same format as executor.log:
 - Truncated to 1MB default
 - Used for failure feedback: read and propagated to `.runner/context/failure.md` on next retry
 
+### agent_error.log
+
+Agent errors (agent output is invalid or disallowed):
+
+```text
+agent error: passed node 'auth' changed in next tree
+```
+
+- Written when the agent violates immutability, status invariants, child-addition rules, or emits an invalid tree
+- DOES increment node `attempts` (retry semantics)
+- Propagated to agent context via `history.md` as a retry summary
+
 ### runner_error.log
 
 Runner-internal failures (not agent failures):
 
 ```text
-runner error: immutability failed: passed node 'auth' changed in next tree
+runner error: failed to write tree snapshot: ...
 ```
 
-- Written when guard execution fails internally, state updates fail, or tree validation fails
+- Written when guard execution fails internally, state updates fail, or other runner infrastructure fails
 - Does NOT increment node `attempts` (state preserved from pre-iteration)
 - Not propagated to agent context (isolated from agent view)
 
@@ -170,7 +184,8 @@ Failure propagation: `guard.log` from iteration N is read and written to `.runne
 **Failure diagnosis:**
 
 - Guard failures → check `guard.log` for test output
-- Runner errors → check `runner_error.log` for validation failures
+- Agent errors → check `agent_error.log` for validation failures
+- Runner errors → check `runner_error.log` for internal failures
 - Agent behavior → check `output.json` for declared status and reasoning
 
 **Iteration reconstruction:** Complete history in `.runner/iterations/{run_id}/` preserves full audit trail for any iteration.
