@@ -5,6 +5,8 @@
 # MD005: no config options; disabled due to extension version mismatch
 # MD013: disabled (matches global config)
 disable = ["MD005", "MD013"]
+# Exclude minijinja templates (they start with HTML comments, not headings)
+exclude = ["runner/src/io/prompts/*.md"]
 
 [MD007]
 indent = 2

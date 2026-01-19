@@ -4,13 +4,199 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
+use minijinja::{Environment, context};
+use serde::Serialize;
 use tracing::debug;
 
 use crate::tree::Node;
 
-const TREE_AGENT_CONTRACT: &str = "Tree agent contract:\n- Decide whether the selected node should be executed now (`decision=execute`) or decomposed (`decision=decompose`).\n- If `decision=decompose`, you MUST provide 1+ child specs in `children` (title, goal, optional acceptance).\n- Do NOT edit repository files in this step.\n- The runner owns `.runner/state/tree.json`; do NOT try to edit it to add children.";
+const TREE_AGENT_TEMPLATE: &str = include_str!("prompts/tree_agent.md");
+const EXECUTOR_TEMPLATE: &str = include_str!("prompts/executor.md");
 
-const EXECUTOR_CONTRACT: &str = "Executor contract:\n- Do not modify passed nodes.\n- Do not set `passes=true` (runner-owned).\n- You MAY edit open nodes in `.runner/state/tree.json` (plan can change), but you MUST NOT add children to any node.\n- Run formatting/lint/tests as appropriate before declaring `status=done`.\n- Final response must be a single JSON object matching the output schema (no markdown, no code fences).";
+/// Selected node context for template rendering.
+#[derive(Debug, Clone, Serialize)]
+struct SelectedNodeContext {
+    path: String,
+    id: String,
+    title: String,
+    goal: String,
+    acceptance: Vec<String>,
+}
+
+impl SelectedNodeContext {
+    fn from_node(path: &str, node: &Node) -> Self {
+        Self {
+            path: path.to_string(),
+            id: node.id.clone(),
+            title: node.title.clone(),
+            goal: node.goal.clone(),
+            acceptance: node.acceptance.clone(),
+        }
+    }
+}
+
+/// Template engine wrapper around minijinja.
+struct PromptEngine {
+    env: Environment<'static>,
+}
+
+impl PromptEngine {
+    fn new() -> Self {
+        let mut env = Environment::new();
+        env.add_template("tree_agent", TREE_AGENT_TEMPLATE)
+            .expect("tree_agent template should be valid");
+        env.add_template("executor", EXECUTOR_TEMPLATE)
+            .expect("executor template should be valid");
+        Self { env }
+    }
+
+    fn render_tree_agent(&self, input: &PromptInputs) -> Result<String> {
+        let selected = SelectedNodeContext::from_node(&input.selected_path, &input.selected_node);
+        let template = self.env.get_template("tree_agent")?;
+        let rendered = template.render(context! {
+            goal => input.context_goal.trim(),
+            history => input.context_history.as_deref().map(str::trim).filter(|s| !s.is_empty()),
+            failure => input.context_failure.as_deref().map(str::trim).filter(|s| !s.is_empty()),
+            selected => selected,
+            tree_summary => (!input.tree_summary.trim().is_empty()).then(|| input.tree_summary.trim()),
+            assumptions => (!input.assumptions.trim().is_empty()).then(|| input.assumptions.trim()),
+            questions => (!input.questions.trim().is_empty()).then(|| input.questions.trim()),
+        })?;
+        Ok(rendered)
+    }
+
+    fn render_executor(&self, input: &PromptInputs, planner_notes: Option<&str>) -> Result<String> {
+        let selected = SelectedNodeContext::from_node(&input.selected_path, &input.selected_node);
+        let template = self.env.get_template("executor")?;
+        let rendered = template.render(context! {
+            planner_notes => planner_notes.map(str::trim).filter(|s| !s.is_empty()),
+            goal => input.context_goal.trim(),
+            history => input.context_history.as_deref().map(str::trim).filter(|s| !s.is_empty()),
+            failure => input.context_failure.as_deref().map(str::trim).filter(|s| !s.is_empty()),
+            selected => selected,
+            tree_summary => (!input.tree_summary.trim().is_empty()).then(|| input.tree_summary.trim()),
+            assumptions => (!input.assumptions.trim().is_empty()).then(|| input.assumptions.trim()),
+            questions => (!input.questions.trim().is_empty()).then(|| input.questions.trim()),
+        })?;
+        Ok(rendered)
+    }
+}
+
+/// A parsed section from rendered template output.
+#[derive(Debug, Clone)]
+struct ParsedSection {
+    /// Section identifier (e.g., "contract", "goal").
+    key: String,
+    /// Whether this section is required (cannot be dropped).
+    required: bool,
+    /// Full section content including header.
+    content: String,
+}
+
+/// Parse sections from rendered template output using HTML comment markers.
+///
+/// Markers follow format: `<!-- section:KEY required|droppable -->`
+fn parse_sections(rendered: &str) -> Vec<ParsedSection> {
+    use std::sync::LazyLock;
+    static SECTION_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
+        regex::Regex::new(r"<!--\s*section:(\w+)\s+(required|droppable)\s*-->").unwrap()
+    });
+
+    let mut sections = Vec::new();
+    let matches: Vec<_> = SECTION_RE.captures_iter(rendered).collect();
+
+    for (i, caps) in matches.iter().enumerate() {
+        let key = caps.get(1).unwrap().as_str().to_string();
+        let required = caps.get(2).unwrap().as_str() == "required";
+        let start = caps.get(0).unwrap().end();
+        let end = matches
+            .get(i + 1)
+            .map(|m| m.get(0).unwrap().start())
+            .unwrap_or(rendered.len());
+
+        // Content after marker, excluding the marker itself
+        let content = rendered[start..end].trim().to_string();
+        if !content.is_empty() || required {
+            sections.push(ParsedSection {
+                key,
+                required,
+                content,
+            });
+        }
+    }
+
+    sections
+}
+
+/// Apply budget to parsed sections, dropping droppable sections as needed.
+///
+/// Drop order: tree -> assumptions -> questions -> history -> failure -> planner
+fn apply_budget_to_sections(sections: &mut Vec<ParsedSection>, budget: usize) {
+    let total_len =
+        |secs: &[ParsedSection]| -> usize { secs.iter().map(|s| s.content.len()).sum() };
+
+    if total_len(sections) <= budget {
+        return;
+    }
+
+    let drop_order = [
+        "tree",
+        "assumptions",
+        "questions",
+        "history",
+        "failure",
+        "planner",
+    ];
+    for key in drop_order {
+        if total_len(sections) <= budget {
+            break;
+        }
+        if let Some(idx) = sections.iter().position(|s| s.key == key && !s.required) {
+            let dropped_len = sections[idx].content.len();
+            debug!(
+                section = key,
+                bytes_dropped = dropped_len,
+                "dropped section for budget"
+            );
+            sections.remove(idx);
+        }
+    }
+
+    // If still over budget, truncate the last section
+    if total_len(sections) > budget && !sections.is_empty() {
+        let other_len: usize = sections
+            .iter()
+            .take(sections.len() - 1)
+            .map(|s| s.content.len())
+            .sum();
+        let allowed = budget.saturating_sub(other_len);
+        let last = sections.last_mut().unwrap();
+        let before_len = last.content.len();
+        if last.content.len() > allowed {
+            if allowed > 12 {
+                last.content.truncate(allowed - 12);
+                last.content.push_str("\n[truncated]");
+            } else {
+                last.content.truncate(allowed);
+            }
+            debug!(
+                section = last.key,
+                before_len,
+                after_len = last.content.len(),
+                "truncated section for budget"
+            );
+        }
+    }
+}
+
+/// Render sections back to a single string.
+fn render_sections(sections: &[ParsedSection]) -> String {
+    sections
+        .iter()
+        .map(|s| s.content.as_str())
+        .collect::<Vec<_>>()
+        .join("\n\n")
+}
 
 /// All inputs needed to build a prompt pack.
 #[derive(Debug, Clone)]
@@ -71,148 +257,45 @@ impl PromptBuilder {
 
     /// Build a prompt pack for the tree agent.
     pub fn build_tree_agent(&self, input: &PromptInputs) -> PromptPack {
-        let mut sections = vec![
-            PromptSection::required("contract", "Tree Agent Contract", TREE_AGENT_CONTRACT),
-            PromptSection::required("goal", "Goal", input.context_goal.trim()),
-            PromptSection::droppable(
-                "history",
-                "History (previous attempt)",
-                input.context_history.as_deref().unwrap_or("").trim(),
-            ),
-            PromptSection::droppable(
-                "failure",
-                "Failure (guard output)",
-                input.context_failure.as_deref().unwrap_or("").trim(),
-            ),
-            PromptSection::required(
-                "selected",
-                "Selected Node",
-                &render_selected_node(&input.selected_path, &input.selected_node),
-            ),
-            PromptSection::droppable("tree", "Tree Summary", input.tree_summary.trim()),
-            PromptSection::droppable("assumptions", "Assumptions", input.assumptions.trim()),
-            PromptSection::droppable("questions", "Open Questions", input.questions.trim()),
-        ];
+        let engine = PromptEngine::new();
+        let rendered = engine
+            .render_tree_agent(input)
+            .expect("tree_agent template rendering should not fail");
 
-        sections.retain(|s| !s.content.is_empty() || s.required);
-        apply_budget(&mut sections, self.budget_bytes);
+        let mut sections = parse_sections(&rendered);
+        apply_budget_to_sections(&mut sections, self.budget_bytes);
 
-        PromptPack { sections }
+        PromptPack {
+            content: render_sections(&sections),
+        }
     }
 
     /// Build a prompt pack for the executor agent.
     pub fn build_executor(&self, input: &PromptInputs, planner_notes: Option<&str>) -> PromptPack {
-        let mut sections = vec![
-            PromptSection::required("contract", "Executor Contract", EXECUTOR_CONTRACT),
-            PromptSection::droppable(
-                "planner",
-                "Planner Notes",
-                planner_notes.unwrap_or("").trim(),
-            ),
-            PromptSection::required("goal", "Goal", input.context_goal.trim()),
-            PromptSection::droppable(
-                "history",
-                "History (previous attempt)",
-                input.context_history.as_deref().unwrap_or("").trim(),
-            ),
-            PromptSection::droppable(
-                "failure",
-                "Failure (guard output)",
-                input.context_failure.as_deref().unwrap_or("").trim(),
-            ),
-            PromptSection::required(
-                "selected",
-                "Selected Node",
-                &render_selected_node(&input.selected_path, &input.selected_node),
-            ),
-            PromptSection::droppable("tree", "Tree Summary", input.tree_summary.trim()),
-            PromptSection::droppable("assumptions", "Assumptions", input.assumptions.trim()),
-            PromptSection::droppable("questions", "Open Questions", input.questions.trim()),
-        ];
+        let engine = PromptEngine::new();
+        let rendered = engine
+            .render_executor(input, planner_notes)
+            .expect("executor template rendering should not fail");
 
-        sections.retain(|s| !s.content.is_empty() || s.required);
-        apply_budget(&mut sections, self.budget_bytes);
+        let mut sections = parse_sections(&rendered);
+        apply_budget_to_sections(&mut sections, self.budget_bytes);
 
-        PromptPack { sections }
+        PromptPack {
+            content: render_sections(&sections),
+        }
     }
 }
 
 /// A rendered prompt ready to send to the executor.
 #[derive(Debug, Clone)]
 pub struct PromptPack {
-    pub sections: Vec<PromptSection>,
+    content: String,
 }
 
 impl PromptPack {
-    /// Render all sections as a single string.
+    /// Get the rendered prompt content.
     pub fn render(&self) -> String {
-        let mut buf = String::new();
-        for section in &self.sections {
-            buf.push_str(&section.render());
-            buf.push('\n');
-        }
-        buf
-    }
-}
-
-/// A titled section in the prompt pack.
-#[derive(Debug, Clone)]
-pub struct PromptSection {
-    /// Stable identifier for budget management (e.g., "tree", "goal").
-    key: &'static str,
-    /// Human-readable title rendered as markdown header.
-    title: String,
-    /// Section body text.
-    content: String,
-    /// If true, section cannot be dropped to fit budget.
-    required: bool,
-}
-
-impl PromptSection {
-    fn required(key: &'static str, title: &str, content: &str) -> Self {
-        Self {
-            key,
-            title: title.to_string(),
-            content: content.to_string(),
-            required: true,
-        }
-    }
-
-    fn droppable(key: &'static str, title: &str, content: &str) -> Self {
-        Self {
-            key,
-            title: title.to_string(),
-            content: content.to_string(),
-            required: false,
-        }
-    }
-
-    fn render(&self) -> String {
-        format!("### {}\n\n{}\n", self.title, self.content)
-    }
-
-    fn render_len(&self) -> usize {
-        self.render().len()
-    }
-
-    fn truncate_to(&mut self, max_len: usize) {
-        let header = format!("### {}\n\n", self.title);
-        let footer = "\n";
-        let available = max_len.saturating_sub(header.len() + footer.len());
-        if self.content.len() <= available {
-            return;
-        }
-        if available == 0 {
-            self.content.clear();
-            return;
-        }
-        let suffix = "\n[truncated]";
-        if available <= suffix.len() {
-            self.content = suffix[..available].to_string();
-            return;
-        }
-        self.content.truncate(available - suffix.len());
-        self.content.push_str(suffix);
+        self.content.clone()
     }
 }
 
@@ -227,75 +310,6 @@ fn read_optional(path: impl Into<PathBuf>) -> Result<Option<String>> {
     Ok(Some(contents))
 }
 
-/// Format selected node metadata for the prompt.
-fn render_selected_node(path: &str, node: &Node) -> String {
-    let mut buf = String::new();
-    buf.push_str(&format!("path: {}\n", path));
-    buf.push_str(&format!("id: {}\n", node.id));
-    buf.push_str(&format!("title: {}\n", node.title));
-    buf.push_str(&format!("goal: {}\n", node.goal));
-    if !node.acceptance.is_empty() {
-        buf.push_str("acceptance:\n");
-        for item in &node.acceptance {
-            buf.push_str(&format!("- {}\n", item));
-        }
-    }
-    buf
-}
-
-/// Drop less critical sections until total size fits within budget.
-///
-/// Drop order: tree → assumptions → questions → history → failure.
-/// If still over budget after dropping all droppable sections, truncates the last section.
-///
-/// Future: An orchestrator agent will handle budget overflow more intelligently by compacting
-/// existing sections (summarizing, extracting key points) rather than dropping them entirely.
-/// This naive drop-first approach is a placeholder for MVP.
-fn apply_budget(sections: &mut Vec<PromptSection>, budget: usize) {
-    let mut total: usize = sections.iter().map(PromptSection::render_len).sum();
-    if total <= budget {
-        return;
-    }
-
-    let drop_order = ["tree", "assumptions", "questions", "history", "failure"];
-    for key in drop_order {
-        if total <= budget {
-            break;
-        }
-        if let Some(idx) = sections.iter().position(|s| s.key == key) {
-            let dropped_len = sections[idx].render_len();
-            total = total.saturating_sub(dropped_len);
-            debug!(
-                section = key,
-                bytes_dropped = dropped_len,
-                "dropped section for budget"
-            );
-            sections.remove(idx);
-        }
-    }
-
-    if total <= budget || sections.is_empty() {
-        return;
-    }
-
-    let last_idx = sections.len() - 1;
-    let other_len: usize = sections
-        .iter()
-        .enumerate()
-        .filter(|(idx, _)| *idx != last_idx)
-        .map(|(_, s)| s.render_len())
-        .sum();
-    let allowed = budget.saturating_sub(other_len);
-    let before_len = sections[last_idx].render_len();
-    sections[last_idx].truncate_to(allowed);
-    debug!(
-        section = sections[last_idx].key,
-        before_len,
-        after_len = allowed,
-        "truncated section for budget"
-    );
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -303,8 +317,8 @@ mod tests {
 
     /// Verifies prompt sections appear in deterministic order.
     ///
-    /// Order matters for prompt consistency: contract → goal → history → failure →
-    /// selected → tree → assumptions → questions.
+    /// Order matters for prompt consistency: contract -> goal -> history -> failure ->
+    /// selected -> tree -> assumptions -> questions.
     #[test]
     fn prompt_ordering_is_stable() {
         let input = PromptInputs {
@@ -319,26 +333,40 @@ mod tests {
         };
 
         let pack = PromptBuilder::new(10_000).build_executor(&input, None);
-        let keys: Vec<&str> = pack.sections.iter().map(|s| s.key).collect();
-        assert_eq!(
-            keys,
-            vec![
-                "contract",
-                "goal",
-                "history",
-                "failure",
-                "selected",
-                "tree",
-                "assumptions",
-                "questions",
-            ]
+        let content = pack.render();
+
+        // Verify sections appear in expected order
+        let contract_pos = content
+            .find("### Executor Contract")
+            .expect("contract section");
+        let goal_pos = content.find("### Goal").expect("goal section");
+        let history_pos = content.find("### History").expect("history section");
+        let failure_pos = content.find("### Failure").expect("failure section");
+        let selected_pos = content.find("### Selected Node").expect("selected section");
+        let tree_pos = content.find("### Tree Summary").expect("tree section");
+        let assumptions_pos = content
+            .find("### Assumptions")
+            .expect("assumptions section");
+        let questions_pos = content
+            .find("### Open Questions")
+            .expect("questions section");
+
+        assert!(contract_pos < goal_pos, "contract before goal");
+        assert!(goal_pos < history_pos, "goal before history");
+        assert!(history_pos < failure_pos, "history before failure");
+        assert!(failure_pos < selected_pos, "failure before selected");
+        assert!(selected_pos < tree_pos, "selected before tree");
+        assert!(tree_pos < assumptions_pos, "tree before assumptions");
+        assert!(
+            assumptions_pos < questions_pos,
+            "assumptions before questions"
         );
     }
 
     /// Verifies budget enforcement drops less critical sections first.
     ///
     /// With a tight budget, tree and assumptions (low priority) should be dropped
-    /// while required sections (contract, goal, output) remain.
+    /// while required sections (contract, goal, selected) remain.
     #[test]
     fn budget_drops_less_critical_sections_first() {
         let input = PromptInputs {
@@ -352,9 +380,58 @@ mod tests {
             questions: "questions".repeat(50),
         };
 
-        let pack = PromptBuilder::new(300).build_executor(&input, None);
-        let keys: Vec<&str> = pack.sections.iter().map(|s| s.key).collect();
-        assert!(!keys.contains(&"tree"));
-        assert!(!keys.contains(&"assumptions"));
+        let pack = PromptBuilder::new(600).build_executor(&input, None);
+        let content = pack.render();
+
+        // Tree and assumptions should be dropped (low priority droppable sections)
+        assert!(
+            !content.contains("### Tree Summary"),
+            "tree should be dropped"
+        );
+        assert!(
+            !content.contains("### Assumptions"),
+            "assumptions should be dropped"
+        );
+        // Required sections should remain
+        assert!(
+            content.contains("### Executor Contract"),
+            "contract should remain"
+        );
+        assert!(content.contains("### Goal"), "goal should remain");
+        assert!(
+            content.contains("### Selected Node"),
+            "selected should remain"
+        );
+    }
+
+    /// Verifies template renders with XML tags for semantic structure.
+    #[test]
+    fn template_uses_xml_tags() {
+        let input = PromptInputs {
+            selected_path: "root".to_string(),
+            selected_node: default_tree(),
+            tree_summary: "".to_string(),
+            context_goal: "test goal".to_string(),
+            context_history: None,
+            context_failure: None,
+            assumptions: "".to_string(),
+            questions: "".to_string(),
+        };
+
+        let pack = PromptBuilder::new(10_000).build_tree_agent(&input);
+        let content = pack.render();
+
+        assert!(content.contains("<contract>"), "should have contract tag");
+        assert!(
+            content.contains("</contract>"),
+            "should have contract close tag"
+        );
+        assert!(content.contains("<goal>"), "should have goal tag");
+        assert!(content.contains("</goal>"), "should have goal close tag");
+        assert!(content.contains("<selected>"), "should have selected tag");
+        assert!(
+            content.contains("</selected>"),
+            "should have selected close tag"
+        );
     }
 }
