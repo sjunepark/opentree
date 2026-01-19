@@ -1,6 +1,12 @@
 .DS_Store
 .rumdl_cache/
 
+# Environment files (Vite convention)
+# .env.development is committed; .env and .env.local are not
+.env
+.env.local
+.env*.local
+
 bin/
 target/
 .runner/context/

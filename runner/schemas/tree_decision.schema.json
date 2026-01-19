@@ -3,7 +3,7 @@
   "title": "TreeDecision",
   "type": "object",
   "additionalProperties": false,
-  "required": ["decision", "summary"],
+  "required": ["decision", "summary", "children"],
   "properties": {
     "decision": {
       "type": "string",
@@ -17,7 +17,7 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["title", "goal"],
+        "required": ["title", "goal", "acceptance"],
         "properties": {
           "title": {
             "type": "string",
@@ -36,29 +36,5 @@
         }
       }
     }
-  },
-  "allOf": [
-    {
-      "if": {
-        "properties": {
-          "decision": {
-            "const": "decompose"
-          }
-        }
-      },
-      "then": {
-        "required": ["children"],
-        "properties": {
-          "children": {
-            "minItems": 1
-          }
-        }
-      },
-      "else": {
-        "not": {
-          "required": ["children"]
-        }
-      }
-    }
-  ]
+  }
 }
