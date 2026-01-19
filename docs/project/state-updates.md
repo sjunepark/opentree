@@ -4,8 +4,8 @@ Runner-owned state transitions for task trees.
 
 ## Overview
 
-The runner owns `passes` and `attempts` fields—agent edits are ignored. After
-each step, state updates apply in order:
+The runner owns `passes`, `attempts`, and `next` fields—agent edits are ignored.
+After each step, state updates apply in order:
 
 1. Reset runner-owned fields from previous tree
 2. Apply transition rules to selected node
@@ -16,15 +16,18 @@ Entry point: `apply_state_updates()` in `runner/src/core/state_update.rs:13-69`
 
 ## Runner-Owned Field Reset
 
-`reset_runner_owned_fields()` overwrites `next` tree values with `prev` tree
-values, enforcing runner ownership.
+`reset_runner_owned_fields()` overwrites tree values with `prev` tree values,
+enforcing runner ownership of `passes`, `attempts`, and `next`.
 
-| Node Status | `passes` | `attempts` |
-|-------------|----------|------------|
-| Existing    | from prev | from prev |
-| New (added by agent) | `false` | `0` |
+| Node Status | `passes` | `attempts` | `next` |
+|-------------|----------|------------|--------|
+| Existing    | from prev | from prev | from prev |
+| New (added by decomposer) | `false` | `0` | preserved |
 
-Code: `runner/src/core/state_update.rs:84-96`
+New nodes keep their `next` value because the decomposer sets it correctly via
+`TreeChildSpec`. Existing nodes have `next` restored to prevent executor tampering.
+
+Code: `runner/src/core/state_update.rs:89-114`
 
 ## State Transitions
 
@@ -103,7 +106,7 @@ treated as **agent retries**:
 ```text
 apply_state_updates(prev, next, selected_id, status, guard)
   │
-  ├─ index_runner_owned(prev)        → HashMap<id, (passes, attempts)>
+  ├─ index_runner_owned(prev)        → HashMap<id, (passes, attempts, next)>
   ├─ reset_runner_owned_fields(next) → overwrite from prev, defaults for new
   ├─ find selected node
   ├─ apply transition rules          → update passes/attempts per table
