@@ -20,6 +20,9 @@ rustfmt-check:
 clippy:
   cargo clippy --workspace --all-targets -- -D warnings
 
+doc:
+  cargo clean --doc && cargo doc --workspace --no-deps --open
+
 test:
   cargo test --workspace
 
