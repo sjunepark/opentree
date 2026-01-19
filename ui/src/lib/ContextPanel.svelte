@@ -96,18 +96,6 @@
 </script>
 
 <div class="context-panel">
-  <div class="header">
-    <span class="title">
-      {#if selection.type === 'node'}
-        Node Detail
-      {:else if selection.type === 'iteration'}
-        Iteration Detail
-      {:else}
-        Context
-      {/if}
-    </span>
-  </div>
-
   <div class="content">
     {#if selection.type === 'node' && selection.node}
       <NodeDetail node={selection.node} />
@@ -169,30 +157,11 @@
     display: flex;
     flex-direction: column;
     height: 100%;
-    background: white;
-    border: 1px solid #e2e8f0;
-    border-radius: 0.5rem;
-    overflow: hidden;
-  }
-
-  .header {
-    padding: 0.5rem 0.75rem;
-    border-bottom: 1px solid #e2e8f0;
-    flex-shrink: 0;
-  }
-
-  .title {
-    font-size: 0.75rem;
-    font-weight: 600;
-    color: #64748b;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
   }
 
   .content {
     flex: 1;
     overflow-y: auto;
-    padding: 0.75rem;
   }
 
   .center-message {

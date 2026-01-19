@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Node } from './types';
-  import { findLeftmostOpenLeaf, findPathToNode, findNodeById } from './tree-utils';
+  import { findLeftmostOpenLeaf, findPathToNode } from './tree-utils';
   import { selection, selectNode } from './stores.svelte';
   import { createTreeRenderer } from './d3-tree-renderer';
 
@@ -14,37 +14,30 @@
   // Container ref for auto-scroll
   let containerEl: HTMLDivElement;
 
-  // Manually expanded node IDs (survives across renders, adds to active path)
+  // Manually expanded node IDs (persists across clicks)
   let manuallyExpanded = $state<Set<string>>(new Set());
 
   // Reset expansions when tree changes
   $effect(() => {
     const _ = tree.id;
     manuallyExpanded = new Set();
+    selectNode(null);
   });
 
-  // Compute active node: use prop override or leftmost open leaf
-  const activeNode = $derived.by(() => {
+  // Default path: leftmost open leaf or activeNodeId prop
+  const defaultPath = $derived.by(() => {
     if (activeNodeId) {
-      return { id: activeNodeId };
+      return new Set(findPathToNode(tree, activeNodeId));
     }
-    // Default: leftmost open leaf (matches runner's selector)
     const leaf = findLeftmostOpenLeaf(tree);
-    return leaf;
+    if (!leaf) return new Set<string>();
+    return new Set(findPathToNode(tree, leaf.id));
   });
 
-  // Compute base path as Set for O(1) membership checks
-  const activePath = $derived.by(() => {
-    if (!activeNode) return new Set<string>();
-    const pathArray = findPathToNode(tree, activeNode.id);
-    return new Set(pathArray);
-  });
-
-  // Combined path: active path + manually expanded paths
-  const visiblePath = $derived.by(() => {
-    const combined = new Set(activePath);
+  // Expanded path: default + all manually expanded paths (controls visibility)
+  const expandedPath = $derived.by(() => {
+    const combined = new Set(defaultPath);
     for (const nodeId of manuallyExpanded) {
-      // Add path to each manually expanded node
       const pathArray = findPathToNode(tree, nodeId);
       for (const id of pathArray) {
         combined.add(id);
@@ -53,29 +46,38 @@
     return combined;
   });
 
-  // Handle node click - expand collapsed subtrees or select node
+  // Highlighted path: only the selected node's ancestors (controls blue styling)
+  const highlightedPath = $derived.by(() => {
+    if (selection.nodeId) {
+      return new Set(findPathToNode(tree, selection.nodeId));
+    }
+    // When no selection, highlight the default path
+    return defaultPath;
+  });
+
+  // Handle node click - expand if collapsed, always select
   function handleNodeClick(node: Node) {
-    // If clicking a node that's not visible, expand its path
-    if (!visiblePath.has(node.id)) {
-      // Find a leaf in this subtree to expand the full path
+    // If clicking a collapsed node (not in expanded path), expand it
+    if (!expandedPath.has(node.id)) {
       const leaf = findLeftmostOpenLeaf(node);
       const targetId = leaf?.id ?? node.id;
       manuallyExpanded = new Set([...manuallyExpanded, targetId]);
     }
-    // Always update selection for detail panel
     selectNode(node);
   }
 
   // Create attachment function for D3 tree rendering
   function createTreeAttachment(
     treeData: Node,
-    path: Set<string>,
+    expanded: Set<string>,
+    highlighted: Set<string>,
     selectedId: string | null
   ) {
     return (svg: SVGSVGElement) => {
       const renderer = createTreeRenderer(svg, {
         tree: treeData,
-        activePath: path,
+        expandedPath: expanded,
+        highlightedPath: highlighted,
         selectedNodeId: selectedId,
         onNodeClick: handleNodeClick,
       });
@@ -83,20 +85,14 @@
     };
   }
 
-  // Auto-scroll to active node when path changes
+  // Auto-scroll to selected node when selection changes
   $effect(() => {
-    // Re-run when visiblePath changes
-    const _ = visiblePath.size;
-
-    // Use setTimeout to ensure DOM is updated
+    const _ = selection.nodeId;
     setTimeout(() => {
-      if (!containerEl) return;
-      const activeLeaf = containerEl.querySelector('.node[data-node-id] rect.node-glow');
-      if (activeLeaf) {
-        const nodeGroup = activeLeaf.closest('.node');
-        if (nodeGroup) {
-          nodeGroup.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }
+      if (!containerEl || !selection.nodeId) return;
+      const selectedNode = containerEl.querySelector(`.node[data-node-id="${selection.nodeId}"]`);
+      if (selectedNode) {
+        selectedNode.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }
     }, 50);
   });
@@ -105,7 +101,7 @@
 <div class="ancestry-tree-view" bind:this={containerEl}>
   <svg
     class="tree-svg"
-    {@attach createTreeAttachment(tree, visiblePath, selection.nodeId)}
+    {@attach createTreeAttachment(tree, expandedPath, highlightedPath, selection.nodeId)}
   ></svg>
 </div>
 

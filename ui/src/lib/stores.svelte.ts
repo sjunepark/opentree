@@ -53,10 +53,9 @@ export const timer = $state({
   elapsed: 0,
 });
 
-// Secondary drawer state
-export const drawer = $state({
-  open: false,
-  activeTab: 'tree' as 'tree' | 'config' | 'docs',
+// Right panel state
+export const rightPanel = $state({
+  activeTab: 'details' as 'details' | 'config' | 'docs',
 });
 
 // Helper to create iteration key
@@ -158,15 +157,7 @@ export function resetStream(runId: string, iter: number): void {
   stream.autoScroll = true;
 }
 
-// Toggle drawer
-export function toggleDrawer(): void {
-  drawer.open = !drawer.open;
-}
-
-// Set drawer tab
-export function setDrawerTab(tab: 'tree' | 'config' | 'docs'): void {
-  drawer.activeTab = tab;
-  if (!drawer.open) {
-    drawer.open = true;
-  }
+// Set right panel tab
+export function setRightPanelTab(tab: 'details' | 'config' | 'docs'): void {
+  rightPanel.activeTab = tab;
 }

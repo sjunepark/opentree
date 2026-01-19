@@ -1,9 +1,8 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import StatusBar from './lib/StatusBar.svelte';
-  import LiveOutput from './lib/LiveOutput.svelte';
-  import BottomSection from './lib/BottomSection.svelte';
-  import SecondaryDrawer from './lib/SecondaryDrawer.svelte';
+  import LeftPanel from './lib/LeftPanel.svelte';
+  import RightPanel from './lib/RightPanel.svelte';
   import {
     connection,
     data,
@@ -213,16 +212,18 @@
         <button onclick={loadData}>Retry</button>
       </div>
     {:else}
-      <div class="live-section">
-        <LiveOutput />
+      <div class="left-panel">
+        <LeftPanel tree={data.tree} />
       </div>
-      <div class="bottom-section">
-        <BottomSection />
+      <div class="right-panel">
+        <RightPanel
+          config={data.config}
+          assumptions={data.assumptions}
+          questions={data.questions}
+        />
       </div>
     {/if}
   </main>
-
-  <SecondaryDrawer />
 </div>
 
 <style>
@@ -235,8 +236,8 @@
 
   .main {
     flex: 1;
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
     overflow: hidden;
     padding: 0.75rem;
     gap: 0.75rem;
@@ -251,6 +252,7 @@
     height: 100%;
     gap: 1rem;
     color: #64748b;
+    grid-column: 1 / -1;
   }
 
   .error-overlay {
@@ -270,13 +272,13 @@
     background-color: #2563eb;
   }
 
-  .live-section {
-    flex: 6;
+  .left-panel {
     min-height: 0;
+    overflow: hidden;
   }
 
-  .bottom-section {
-    flex: 4;
+  .right-panel {
     min-height: 0;
+    overflow: hidden;
   }
 </style>

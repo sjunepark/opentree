@@ -44,7 +44,8 @@ interface TreeNode {
 
 export interface TreeRendererOptions {
   tree: Node;
-  activePath: Set<string>;
+  expandedPath: Set<string>;  // Controls which nodes are expanded (visible)
+  highlightedPath: Set<string>;  // Controls which nodes are highlighted (blue)
   selectedNodeId: string | null;
   onNodeClick: (node: Node) => void;
 }
@@ -64,14 +65,14 @@ export function createTreeRenderer(
   svg: SVGSVGElement,
   options: TreeRendererOptions
 ): TreeRendererControls {
-  const { tree, activePath, selectedNodeId, onNodeClick } = options;
+  const { tree, expandedPath, highlightedPath, selectedNodeId, onNodeClick } = options;
 
   // Clear any existing content
   const svgSelection = d3.select(svg);
   svgSelection.selectAll('*').remove();
 
-  // Build hierarchy with collapse logic
-  const root = buildHierarchy(tree, activePath, true);
+  // Build hierarchy with collapse logic (uses expandedPath)
+  const root = buildHierarchy(tree, expandedPath, true);
   const hierarchy = d3.hierarchy(root);
 
   // Compute layout using nodeSize for consistent spacing
@@ -84,11 +85,11 @@ export function createTreeRenderer(
   // Setup SVG with zoom behavior
   const { contentG, zoom } = setupSvg(svgSelection, bounds);
 
-  // Render links first (below nodes)
-  renderLinks(contentG, layoutRoot, activePath);
+  // Render links first (below nodes) - uses highlightedPath for styling
+  renderLinks(contentG, layoutRoot, highlightedPath);
 
-  // Render nodes
-  renderNodes(contentG, layoutRoot, activePath, selectedNodeId, tree, onNodeClick);
+  // Render nodes - uses highlightedPath for styling
+  renderNodes(contentG, layoutRoot, highlightedPath, selectedNodeId, tree, onNodeClick);
 
   return {
     destroy: () => {
@@ -331,21 +332,22 @@ function renderNodes(
     const data = d.data;
     const isOnPath = activePath.has(data.id);
     const isSelected = selectedNodeId === data.id;
-    const hasChildren = d.children && d.children.length > 0;
-    const isActiveLeaf = isOnPath && !hasChildren && !data.isCollapsed;
     const nodeHeight = data.isRoot && data.goal ? ROOT_NODE_HEIGHT : NODE_HEIGHT;
 
     // Determine fill and stroke colors
+    // Selected node: blue border, blue fill
+    // Ancestor nodes (on path but not selected): blue fill, light border
+    // Other nodes: default gray
     let fill = '#f8fafc';
     let stroke = '#e2e8f0';
+    let strokeWidth = 1;
 
-    if (isActiveLeaf) {
+    if (isSelected) {
       fill = '#dbeafe';
       stroke = '#3b82f6';
-    } else if (isSelected) {
-      fill = '#e0f2fe';
-      stroke = '#7dd3fc';
+      strokeWidth = 2;
     } else if (isOnPath) {
+      fill = '#dbeafe';
       stroke = '#93c5fd';
     }
 
@@ -364,10 +366,10 @@ function renderNodes(
       .attr('rx', 6)
       .attr('fill', fill)
       .attr('stroke', stroke)
-      .attr('stroke-width', isActiveLeaf ? 2 : 1);
+      .attr('stroke-width', strokeWidth);
 
-    // Active leaf glow
-    if (isActiveLeaf) {
+    // Selection glow (only for selected node)
+    if (isSelected) {
       nodeG
         .insert('rect', ':first-child')
         .attr('class', 'node-glow')
