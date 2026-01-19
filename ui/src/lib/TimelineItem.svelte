@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { TimelineEntry } from './types';
-  import { selection, selectIteration, makeIterKey } from './stores.svelte';
+  import { selection, selectIteration, makeIterKey, data } from './stores.svelte';
+  import { findNodeById } from './tree-utils';
 
   interface Props {
     entry: TimelineEntry;
@@ -9,6 +10,11 @@
   let { entry }: Props = $props();
 
   const isSelected = $derived(selection.iterKey === makeIterKey(entry.run_id, entry.iter));
+  const nodeTitle = $derived(() => {
+    if (!data.tree) return entry.node_id;
+    const node = findNodeById(data.tree, entry.node_id);
+    return node?.title ?? entry.node_id;
+  });
 
   function getStatusIcon(status: TimelineEntry['status'], guard: TimelineEntry['guard']): string {
     switch (status) {
@@ -45,7 +51,7 @@
   onclick={handleClick}
 >
   <span class="iter">#{entry.iter}</span>
-  <span class="node-id">{entry.node_id}</span>
+  <span class="node-id">{nodeTitle()}</span>
   <span class="status {getStatusClass(entry.status, entry.guard)}">
     {getStatusIcon(entry.status, entry.guard)}
   </span>
