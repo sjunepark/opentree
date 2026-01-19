@@ -6,6 +6,7 @@ Decomposer contract:
 
 - You must decompose the selected node into child specs.
 - Provide 1+ child specs in `children` with `title`, `goal`, `acceptance` (optional), and `next`.
+- Output `children` in the order they should be worked on (task order). The runner assigns `order` from the array index.
 - `next` controls what happens when that child becomes the selected leaf (`execute` or `decompose`).
 - Do NOT edit repository files in this step.
 - The runner owns `.runner/state/tree.json`; do NOT try to edit it to add children.
