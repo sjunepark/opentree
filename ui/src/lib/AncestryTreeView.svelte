@@ -55,15 +55,36 @@
     return defaultPath;
   });
 
-  // Handle node click - expand if collapsed, always select
+  // Handle node click - toggle expand/collapse, always select
   function handleNodeClick(node: Node) {
-    // If clicking a collapsed node (not in expanded path), expand it
-    if (!expandedPath.has(node.id)) {
-      const leaf = findLeftmostOpenLeaf(node);
-      const targetId = leaf?.id ?? node.id;
-      manuallyExpanded = new Set([...manuallyExpanded, targetId]);
+    // Only toggle if node has children
+    if (node.children.length > 0) {
+      // Node is expanded if any of its children are in expandedPath
+      const hasExpandedChildren = node.children.some((c) => expandedPath.has(c.id));
+
+      if (hasExpandedChildren) {
+        // Collapse: remove all descendants from manuallyExpanded
+        const newExpanded = new Set(manuallyExpanded);
+        for (const child of node.children) {
+          removeSubtree(child, newExpanded);
+        }
+        manuallyExpanded = newExpanded;
+      } else {
+        // Expand: add the leftmost open leaf path
+        const leaf = findLeftmostOpenLeaf(node);
+        const targetId = leaf?.id ?? node.id;
+        manuallyExpanded = new Set([...manuallyExpanded, targetId]);
+      }
     }
     selectNode(node);
+  }
+
+  // Helper to remove a node and all descendants from a set
+  function removeSubtree(node: Node, set: Set<string>) {
+    set.delete(node.id);
+    for (const child of node.children) {
+      removeSubtree(child, set);
+    }
   }
 
   // Create attachment function for D3 tree rendering

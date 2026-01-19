@@ -13,10 +13,10 @@ import type { HierarchyPointNode } from 'd3';
 import type { Node } from './types';
 
 // Layout constants
-const NODE_WIDTH = 180;
-const NODE_HEIGHT = 44;
-const ROOT_NODE_HEIGHT = 64; // Extra height for goal text
-const V_SPACING = 54; // Vertical gap between siblings
+const NODE_WIDTH = 200;
+const NODE_HEIGHT = 60; // Height for 2-line wrapped titles
+const ROOT_NODE_HEIGHT = 80; // Extra height for goal text
+const V_SPACING = 70; // Vertical gap between siblings
 const H_SPACING = 220; // Horizontal gap parent→child
 const PADDING = { top: 20, right: 40, bottom: 20, left: 20 };
 
@@ -383,87 +383,120 @@ function renderNodes(
         .attr('stroke-width', 4);
     }
 
-    // Title text
-    const titleY = data.isRoot && data.goal ? -8 : 0;
-    nodeG
-      .append('text')
-      .attr('class', 'node-title')
-      .attr('x', 10)
-      .attr('y', titleY)
-      .attr('dy', '0.35em')
-      .attr('font-size', '14px')
-      .attr('font-weight', 500)
-      .attr('fill', '#1e293b')
-      .text(truncateText(data.title, 16));
+    // Layout: Right column for badges, left side for title
+    // Badge column width (fixed)
+    const badgeColWidth = 50;
+    const badgeColX = NODE_WIDTH - badgeColWidth - 6;
+    const contentPadding = 10;
 
-    // Goal text for root node
-    if (data.isRoot && data.goal) {
-      nodeG
-        .append('text')
-        .attr('class', 'node-goal')
-        .attr('x', 10)
-        .attr('y', 12)
-        .attr('dy', '0.35em')
-        .attr('font-size', '12px')
-        .attr('fill', '#64748b')
-        .text(truncateText(data.goal, 22));
-    }
-
-    // Status badge
+    // Status badge (top-right)
     const status = getStatus(data);
     const statusLabel = getStatusLabel(data);
     const colors = STATUS_COLORS[status];
-
     const badgeWidth = statusLabel.length * 6 + 12;
-    const badgeX = NODE_WIDTH - badgeWidth - 8;
+    const badgeY = -nodeHeight / 2 + 10;
 
     nodeG
       .append('rect')
       .attr('class', 'status-badge-bg')
-      .attr('x', badgeX)
-      .attr('y', titleY - 8)
+      .attr('x', badgeColX + (badgeColWidth - badgeWidth) / 2)
+      .attr('y', badgeY)
       .attr('width', badgeWidth)
-      .attr('height', 16)
-      .attr('rx', 8)
+      .attr('height', 18)
+      .attr('rx', 9)
       .attr('fill', colors.bg);
 
     nodeG
       .append('text')
       .attr('class', 'status-badge-text')
-      .attr('x', badgeX + badgeWidth / 2)
-      .attr('y', titleY)
+      .attr('x', badgeColX + badgeColWidth / 2)
+      .attr('y', badgeY + 9)
       .attr('dy', '0.35em')
       .attr('text-anchor', 'middle')
-      .attr('font-size', '10px')
+      .attr('font-size', '11px')
       .attr('font-weight', 500)
       .attr('fill', colors.text)
       .text(statusLabel);
 
-    // Collapsed badge (+N)
+    // Attempts text (below status badge)
+    nodeG
+      .append('text')
+      .attr('class', 'node-attempts')
+      .attr('x', badgeColX + badgeColWidth / 2)
+      .attr('y', badgeY + 32)
+      .attr('dy', '0.35em')
+      .attr('text-anchor', 'middle')
+      .attr('font-size', '10px')
+      .attr('fill', '#94a3b8')
+      .text(`${data.attempts}/${data.maxAttempts}`);
+
+    // Collapsed badge (+N) - floating circle in top-right corner
     if (data.isCollapsed && data.collapsedCount > 0) {
-      const collapseBadgeX = NODE_WIDTH - 28;
-      const collapseBadgeY = titleY + (data.isRoot && data.goal ? 20 : 16);
+      const badgeRadius = 12;
+      const badgeCenterX = NODE_WIDTH - 4;
+      const badgeCenterY = -nodeHeight / 2 - 4;
 
       nodeG
-        .append('rect')
+        .append('circle')
         .attr('class', 'collapse-badge-bg')
-        .attr('x', collapseBadgeX)
-        .attr('y', collapseBadgeY - 8)
-        .attr('width', 24)
-        .attr('height', 16)
-        .attr('rx', 4)
-        .attr('fill', '#e2e8f0');
+        .attr('cx', badgeCenterX)
+        .attr('cy', badgeCenterY)
+        .attr('r', badgeRadius)
+        .attr('fill', '#3b82f6');
 
       nodeG
         .append('text')
         .attr('class', 'collapse-badge-text')
-        .attr('x', collapseBadgeX + 12)
-        .attr('y', collapseBadgeY)
+        .attr('x', badgeCenterX)
+        .attr('y', badgeCenterY)
         .attr('dy', '0.35em')
         .attr('text-anchor', 'middle')
         .attr('font-size', '10px')
-        .attr('fill', '#64748b')
+        .attr('font-weight', 600)
+        .attr('fill', '#ffffff')
         .text(`+${data.collapsedCount}`);
+    }
+
+    // Title text (left side, using foreignObject for wrapping)
+    const titleWidth = NODE_WIDTH - badgeColWidth - contentPadding - 12;
+    const titleHeight = data.isRoot && data.goal ? nodeHeight - 28 : nodeHeight - 16;
+    const titleY = -nodeHeight / 2 + 8;
+
+    nodeG
+      .append('foreignObject')
+      .attr('class', 'node-title-container')
+      .attr('x', contentPadding)
+      .attr('y', titleY)
+      .attr('width', titleWidth)
+      .attr('height', titleHeight)
+      .append('xhtml:div')
+      .style('font-size', '13px')
+      .style('font-weight', '500')
+      .style('color', '#1e293b')
+      .style('line-height', '1.4')
+      .style('overflow', 'hidden')
+      .style('display', '-webkit-box')
+      .style('-webkit-line-clamp', data.isRoot && data.goal ? '2' : '3')
+      .style('-webkit-box-orient', 'vertical')
+      .style('word-wrap', 'break-word')
+      .text(data.title);
+
+    // Goal text for root node (bottom left)
+    if (data.isRoot && data.goal) {
+      nodeG
+        .append('foreignObject')
+        .attr('class', 'node-goal-container')
+        .attr('x', contentPadding)
+        .attr('y', nodeHeight / 2 - 20)
+        .attr('width', titleWidth)
+        .attr('height', 18)
+        .append('xhtml:div')
+        .style('font-size', '11px')
+        .style('color', '#64748b')
+        .style('overflow', 'hidden')
+        .style('text-overflow', 'ellipsis')
+        .style('white-space', 'nowrap')
+        .text(data.goal);
     }
   });
 }
@@ -498,12 +531,4 @@ function getStatusLabel(node: TreeNode): string {
   if (node.attempts >= node.maxAttempts) return 'fail';
   if (node.attempts > 0) return `${node.attempts}/${node.maxAttempts}`;
   return 'pending';
-}
-
-/**
- * Helper: truncate text with ellipsis.
- */
-function truncateText(text: string, maxLength: number): string {
-  if (text.length <= maxLength) return text;
-  return text.slice(0, maxLength - 1) + '\u2026';
 }

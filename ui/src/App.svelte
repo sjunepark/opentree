@@ -13,7 +13,9 @@
     updateTimelineEntry,
     appendStreamEvents,
     resetStream,
+    selectNode,
   } from './lib/stores.svelte';
+  import { findAutoSelectNode } from './lib/tree-utils';
   import type { TimelineEntry } from './lib/types';
   import {
     fetchTree,
@@ -51,6 +53,12 @@
 
       // Convert runs to timeline entries
       await buildTimeline(iterationsData.runs);
+
+      // Auto-select the current working node or last passing node
+      if (data.tree) {
+        const nodeToSelect = findAutoSelectNode(data.tree);
+        selectNode(nodeToSelect);
+      }
     } catch (e) {
       connection.error = e instanceof Error ? e.message : 'Failed to load data';
     } finally {
