@@ -55,6 +55,60 @@ export interface StreamEvent {
   [key: string]: unknown;
 }
 
+export interface StreamUsage {
+  input_tokens?: number;
+  cached_input_tokens?: number;
+  output_tokens?: number;
+  [key: string]: unknown;
+}
+
+export type UiStreamEvent =
+  | {
+      kind: 'turn_started';
+      id: string;
+      raw: StreamEvent;
+    }
+  | {
+      kind: 'turn_completed';
+      id: string;
+      usage?: StreamUsage;
+      raw: StreamEvent;
+    }
+  | {
+      kind: 'command';
+      id: string;
+      status: 'running' | 'completed';
+      command: string;
+      output: string;
+      exitCode: number | null;
+      rawStart?: StreamEvent;
+      rawEnd?: StreamEvent;
+    }
+  | {
+      kind: 'reasoning';
+      id: string;
+      text: string;
+      raw: StreamEvent;
+    }
+  | {
+      kind: 'agent_message';
+      id: string;
+      text: string;
+      raw: StreamEvent;
+    }
+  | {
+      kind: 'raw';
+      id: string;
+      raw: StreamEvent;
+    }
+  | {
+      kind: 'unknown';
+      id: string;
+      raw: StreamEvent;
+    };
+
+export type NormalizeMode = 'semantic' | 'raw';
+
 // Unified timeline entry for the history view
 export interface TimelineEntry {
   run_id: string;

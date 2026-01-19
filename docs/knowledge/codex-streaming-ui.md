@@ -178,3 +178,14 @@ When processing Codex output for display:
 3. Transform `item.started`/`item.completed` into status indicators, not raw JSON
 4. Group command execution phases into cohesive UI cells
 5. Show reasoning as status updates during execution, summary after
+
+## UI Fixtures and Mapping (Web UI)
+
+The web UI keeps a small set of NDJSON fixtures and a raw-to-semantic mapping table to track
+stream formats and rendering behavior:
+
+- Mapping + taxonomy: `docs/project/stream-events.md`
+- Fixtures: `ui/src/lib/fixtures/stream-sample-executor.jsonl`,
+  `ui/src/lib/fixtures/stream-sample-planner.jsonl`
+
+Update these whenever new event types appear or rendering logic changes.
